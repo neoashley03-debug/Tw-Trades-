@@ -28,13 +28,15 @@ app.secret_key = SECRET_KEY
 # ---------------------------------------------------------
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@twtrades.local")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
-PASSWORD_FILE = os.path.join(APP_DIR, ".admin_password")
-if os.path.exists(PASSWORD_FILE):
-    ADMIN_PASSWORD = open(PASSWORD_FILE).read().strip()
-else:
-    ADMIN_PASSWORD = secrets.token_urlsafe(12)
-    open(PASSWORD_FILE, "w").write(ADMIN_PASSWORD)
+if not ADMIN_PASSWORD:
+    PASSWORD_FILE = os.path.join(APP_DIR, ".admin_password")
+    if os.path.exists(PASSWORD_FILE):
+        ADMIN_PASSWORD = open(PASSWORD_FILE).read().strip()
+    else:
+        ADMIN_PASSWORD = secrets.token_urlsafe(12)
+        open(PASSWORD_FILE, "w").write(ADMIN_PASSWORD)
 
 # ---------------------------------------------------------
 # DEFAULT SETTINGS
