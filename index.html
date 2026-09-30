@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<meta name="description"
+content="TW Trades forex mentorship. Learn technical analysis, fundamental analysis, price action, market structure, risk management and trading discipline.">
+
+<meta name="theme-color" content="#090909">
+
+<title>TW Trades | Forex Mentorship</title>
+
+<style>
+
+* {
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    scroll-behavior:smooth;
+}
+
+body {
+    font-family:Arial,Helvetica,sans-serif;
+    background:#080808;
+    color:#fff;
+    line-height:1.6;
+}
+
+nav {
+    position:sticky;
+    top:0;
+    z-index:999;
+    background:rgba(8,8,8,.96);
+    border-bottom:1px solid #292929;
+    padding:16px 5%;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.logo {
+    font-size:22px;
+    font-weight:900;
+    letter-spacing:2px;
+}
+
+.logo span {
+    color:#d6ad55;
+}
+
+nav a {
+    color:#ccc;
+    text-decoration:none;
+    margin-left:18px;
+    font-size:14px;
+}
+
+nav a:hover {
+    color:#d6ad55;
+}
+
+.hero {
+    min-height:90vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:80px 20px;
+    background:
+    radial-gradient(circle at 50% 20%,#382d18 0%,#111 25%,#080808 65%);
+}
+
+.hero-content {
+    max-width:900px;
+}
+
+.badge {
+    display:inline-block;
+    border:1px solid #6d5627;
+    color:#d6ad55;
+    padding:8px 18px;
+    border-radius:30px;
+    font-size:13px;
+    letter-spacing:1px;
+    margin-bottom:25px;
+}
+
+.hero h1 {
+    font-size:clamp(45px,9vw,85px);
+    line-height:1;
+    margin-bottom:20px;
+}
+
+.gold {
+    color:#d6ad55;
+}
+
+.hero p {
+    color:#bbb;
+    font-size:20px;
+    max-width:700px;
+    margin:0 auto 30px;
+}
+
+.btn {
+    display:inline-block;
+    padding:15px 28px;
+    margin:7px;
+    border-radius:8px;
+    text-decoration:none;
+    font-weight:bold;
+    transition:.2s;
+}
+
+.primary {
+    background:#d6ad55;
+    color:#080808;
+}
+
+.secondary {
+    border:1px solid #555;
+    color:#fff;
+}
+
+.btn:hover {
+    transform:translateY(-2px);
+}
+
+section {
+    max-width:1100px;
+    margin:auto;
+    padding:85px 20px;
+}
+
+.section-title {
+    text-align:center;
+    margin-bottom:50px;
+}
+
+.section-title h2 {
+    font-size:40px;
+    margin-bottom:10px;
+}
+
+.section-title p {
+    color:#999;
+}
+
+.grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:20px;
+}
+
+.card {
+    background:#121212;
+    border:1px solid #292929;
+    border-radius:18px;
+    padding:28px;
+}
+
+.card h3 {
+    margin-bottom:10px;
+    color:#d6ad55;
+}
+
+.card p {
+    color:#aaa;
+}
+
+.icon {
+    font-size:35px;
+    margin-bottom:15px;
+}
+
+.blueprint {
+    background:
+    linear-gradient(135deg,#17130b,#0d0d0d);
+    border:1px solid #594820;
+    border-radius:25px;
+    padding:45px;
+}
+
+.steps {
+    counter-reset:item;
+}
+
+.step {
+    display:flex;
+    gap:20px;
+    margin-bottom:25px;
+}
+
+.number {
+    min-width:42px;
+    height:42px;
+    border-radius:50%;
+    background:#d6ad55;
+    color:#111;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:bold;
+}
+
+.price-box {
+    max-width:500px;
+    margin:auto;
+    text-align:center;
+    background:#111;
+    border:1px solid #6d5627;
+    border-radius:25px;
+    padding:45px 25px;
+    box-shadow:0 15px 50px rgba(0,0,0,.4);
+}
+
+.price {
+    font-size:65px;
+    font-weight:900;
+    color:#d6ad55;
+}
+
+.price small {
+    font-size:18px;
+    color:#999;
+}
+
+.price-box ul {
+    list-style:none;
+    text-align:left;
+    margin:25px 0;
+}
+
+.price-box li {
+    padding:9px 0;
+    color:#ccc;
+}
+
+.price-box li::before {
+    content:"✓";
+    color:#d6ad55;
+    margin-right:10px;
+}
+
+.faq {
+    border-bottom:1px solid #292929;
+    padding:20px 0;
+}
+
+.faq h3 {
+    margin-bottom:8px;
+}
+
+.faq p {
+    color:#999;
+}
+
+.testimonial {
+    max-width:700px;
+    margin:auto;
+    background:#121212;
+    border-left:4px solid #d6ad55;
+    padding:25px;
+    border-radius:10px;
+    color:#ccc;
+}
+
+.disclaimer {
+    font-size:12px;
+    color:#777;
+    text-align:center;
+    max-width:850px;
+    margin:30px auto 0;
+}
+
+.contact {
+    text-align:center;
+}
+
+.social {
+    margin-top:20px;
+}
+
+.social a {
+    color:#d6ad55;
+    text-decoration:none;
+    margin:10px;
+}
+
+footer {
+    text-align:center;
+    background:#050505;
+    border-top:1px solid #222;
+    padding:35px 20px;
+    color:#777;
+}
+
+.whatsapp {
+    position:fixed;
+    right:20px;
+    bottom:20px;
+    z-index:1000;
+    background:#25D366;
+    color:#fff;
+    text-decoration:none;
+    padding:14px 20px;
+    border-radius:40px;
+    font-weight:bold;
+    box-shadow:0 5px 20px rgba(0,0,0,.4);
+}
+
+@media(max-width:700px) {
+
+    nav {
+        display:block;
+        text-align:center;
+    }
+
+    nav .logo {
+        margin-bottom:10px;
+    }
+
+    nav a {
+        margin:5px;
+        display:inline-block;
+    }
+
+    .hero {
+        min-height:80vh;
+    }
+
+    .blueprint {
+        padding:25px;
+    }
+
+    .price {
+        font-size:52px;
+    }
+}
+
+</style>
+</head>
+
+<body>
+
+<nav>
+
+<div class="logo">
+TW <span>TRADES</span>
+</div>
+
+<div>
+<a href="#about">About</a>
+<a href="#learn">Learn</a>
+<a href="#blueprint">Blueprint</a>
+<a href="#pricing">Pricing</a>
+<a href="#faq">FAQ</a>
+</div>
+
+</nav>
+
+
+<!-- HERO -->
+
+<header class="hero" id="home">
+
+<div class="hero-content">
+
+<div class="badge">
+FOREX MENTORSHIP
+</div>
+
+<h1>
+BUILD YOUR<br>
+<span class="gold">TRADING EDGE.</span>
+</h1>
+
+<p>
+Learn a structured approach to forex trading through
+technical analysis, fundamental analysis, price action,
+risk management and trading discipline.
+</p>
+
+<a class="btn primary" href="https://wa.me/27693118405?text=Hi%20TW%20Trades%2C%20I%27m%20interested%20in%20the%20R300/month%20forex%20mentorship.">
+JOIN FOR R300 / MONTH
+</a>
+
+<a class="btn secondary" href="#learn">
+EXPLORE MENTORSHIP
+</a>
+
+</div>
+
+</header>
+
+
+<!-- ABOUT -->
+
+<section id="about">
+
+<div class="section-title">
+
+<h2>What Is TW Trades?</h2>
+
+<p>
+A structured environment for traders who want to develop their skills.
+</p>
+
+</div>
+
+<div class="card">
+
+<p>
+TW Trades is a forex education and mentorship platform focused on
+helping traders develop a structured approach to analyzing the market.
+The mentorship combines technical analysis, fundamental context,
+price action, market structure, risk management and trading psychology.
+</p>
+
+</div>
+
+</section>
+
+
+<!-- WHAT YOU LEARN -->
+
+<section id="learn">
+
+<div class="section-title">
+
+<h2>What You'll Learn</h2>
+
+<p>
+Build knowledge around the key components of a trading process.
+</p>
+
+</div>
+
+<div class="grid">
+
+<div class="card">
+<div class="icon">📊</div>
+<h3>Technical Analysis</h3>
+<p>
+Market structure, support and resistance,
+breakouts, retests and chart analysis.
+</p>
+</div>
+
+<div class="card">
+<div class="icon">🕯️</div>
+<h3>Price Action</h3>
+<p>
+Learn how candle behavior and market structure
+can be incorporated into your analysis.
+</p>
+</div>
+
+<div class="card">
+<div class="icon">🌍</div>
+<h3>Fundamentals</h3>
+<p>
+Understand economic events, news and
+fundamental factors that can affect markets.
+</p>
+</div>
+
+<div class="card">
+<div class="icon">🧠</div>
+<h3>Trading Psychology</h3>
+<p>
+Develop discipline, patience and a consistent
+process for approaching trades.
+</p>
+</div>
+
+<div class="card">
+<div class="icon">🛡️</div>
+<h3>Risk Management</h3>
+<p>
+Learn position sizing, stop-loss planning,
+risk-to-reward concepts and capital protection.
+</p>
+</div>
+
+<div class="card">
+<div class="icon">📈</div>
+<h3>Trade Planning</h3>
+<p>
+Build structured trade plans instead of
+entering the market without a defined process.
+</p>
+</div>
+
+</div>
+
+</section>
+
+
+<!-- BLUEPRINT -->
+
+<section id="blueprint">
+
+<div class="section-title">
+
+<h2>TW Blueprint</h2>
+
+<p>
+A structured framework for analyzing potential market setups.
+</p>
+
+</div>
+
+<div class="blueprint">
+
+<div class="step">
+
+<div class="number">1</div>
+
+<div>
+<h3>Indication</h3>
+<p>
+Identify the initial market move or structural change
+that may provide information about market direction.
+</p>
+</div>
+
+</div>
+
+<div class="step">
+
+<div class="number">2</div>
+
+<div>
+<h3>Correction</h3>
+<p>
+Study the market's retracement and look for areas
+where price may react.
+</p>
+</div>
+
+</div>
+
+<div class="step">
+
+<div class="number">3</div>
+
+<div>
+<h3>Continuation</h3>
+<p>
+Look for confirmation before considering a potential
+continuation setup according to the trading plan.
+</p>
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<!-- MENTORSHIP STRUCTURE -->
+
+<section>
+
+<div class="section-title">
+
+<h2>Mentorship Structure</h2>
+
+<p>
+A practical learning environment built around consistency.
+</p>
+
+</div>
+
+<div class="grid">
+
+<div class="card">
+<h3>Market Education</h3>
+<p>
+Learn concepts step-by-step and understand why
+different tools are used.
+</p>
+</div>
+
+<div class="card">
+<h3>Chart Analysis</h3>
+<p>
+Break down charts and study potential setups
+using a structured approach.
+</p>
+</div>
+
+<div class="card">
+<h3>Trade Reviews</h3>
+<p>
+Review completed trades to identify strengths,
+mistakes and areas for improvement.
+</p>
+</div>
+
+<div class="card">
+<h3>Discipline</h3>
+<p>
+Develop rules designed to reduce impulsive
+decision-making and improve consistency.
+</p>
+</div>
+
+</div>
+
+</section>
+
+
+<!-- PRICING -->
+
+<section id="pricing">
+
+<div class="section-title">
+
+<h2>Membership</h2>
+
+<p>
+Simple monthly access to the TW Trades mentorship.
+</p>
+
+</div>
+
+<div class="price-box">
+
+<h3>TW TRADES MENTORSHIP</h3>
+
+<div class="price">
+R300 <small>/ month</small>
+</div>
+
+<ul>
+
+<li>Forex education</li>
+<li>Technical analysis concepts</li>
+<li>Fundamental analysis concepts</li>
+<li>Price action & market structure</li>
+<li>Risk management education</li>
+<li>Trading psychology & discipline</li>
+<li>TW Blueprint education</li>
+<li>Trade review framework</li>
+
+</ul>
+
+<a class="btn primary" href="https://wa.me/27693118405?text=Hi%20TW%20Trades%2C%20I%27m%20interested%20in%20the%20R300/month%20forex%20mentorship.">
+JOIN TW TRADES
+</a>
+
+<p class="disclaimer">
+Membership provides educational content and mentorship.
+It does not guarantee profits or trading success.
+</p>
+
+</div>
+
+</section>
+
+
+<!-- TESTIMONIAL -->
+
+<section>
+
+<div class="section-title">
+
+<h2>Student Feedback</h2>
+
+</div>
+
+<div class="testimonial">
+
+<p>
+“Your testimonial can go here once you have a genuine
+student review. Do not use invented testimonials.”
+</p>
+
+<br>
+
+<strong>— Student testimonial</strong>
+
+</div>
+
+</section>
+
+
+<!-- FAQ -->
+
+<section id="faq">
+
+<div class="section-title">
+
+<h2>Frequently Asked Questions</h2>
+
+</div>
+
+<div class="faq">
+
+<h3>Is this a signal service?</h3>
+
+<p>
+TW Trades is positioned as an education and mentorship service.
+The focus is on developing trading knowledge and a structured process.
+</p>
+
+</div>
+
+<div class="faq">
+
+<h3>How much does membership cost?</h3>
+
+<p>
+The listed membership price is R300 per month.
+</p>
+
+</div>
+
+<div class="faq">
+
+<h3>Do I need previous trading experience?</h3>
+
+<p>
+The mentorship can be structured for learners who are building
+their understanding of forex from the fundamentals upward.
+</p>
+
+</div>
+
+<div class="faq">
+
+<h3>Will I make money from trading?</h3>
+
+<p>
+No outcome can be guaranteed. Trading involves financial risk,
+and education cannot guarantee profits.
+</p>
+
+</div>
+
+</section>
+
+
+<!-- CONTACT -->
+
+<section id="contact">
+
+<div class="section-title">
+
+<h2>Ready To Learn?</h2>
+
+<p>
+Contact TW Trades to ask about the R300/month mentorship.
+</p>
+
+</div>
+
+<div class="contact">
+
+<a class="btn primary" href="https://wa.me/27693118405?text=Hi%20TW%20Trades%2C%20I%27m%20interested%20in%20the%20R300/month%20forex%20mentorship.">
+💬 JOIN VIA WHATSAPP
+</a>
+
+<p>
+📧 neoashley03@gmail.com
+</p>
+
+<div class="social">
+
+<a href="https://instagram.com/yukihvn26">
+Instagram
+</a>
+
+<a href="https://tiktok.com/@snowfx3">
+TikTok
+</a>
+
+</div>
+
+</div>
+
+<p class="disclaimer">
+
+TW Trades provides educational information only.
+Forex and CFD trading involve significant financial risk.
+Past performance is not indicative of future results.
+Nothing on this website constitutes personalized financial advice.
+
+</p>
+
+</section>
+
+
+<footer>
+
+<strong>TW TRADES</strong>
+
+<br>
+
+The Autonomy of Success
+
+<br><br>
+
+© 2026 TW Trades. All rights reserved.
+
+</footer>
+
+
+<a class="whatsapp" href="https://wa.me/27693118405?text=Hi%20TW%20Trades%2C%20I%27m%20interested%20in%20the%20R300/month%20forex%20mentorship.">
+WhatsApp
+</a>
+
+</body>
+</html>
