@@ -8,3 +8,8 @@ twtrades.db
 server.log
 tunnel.log
 app-backup-*.py
+
+server.log
+error.log
+app_backup_*.py
+app_before_fix_*.py
