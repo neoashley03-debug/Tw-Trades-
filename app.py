@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from flask import Flask, request, jsonify, session, redirect, render_template_string
 
 PUBLIC_ACCESS_PRICE = "R400"
-WHATSAPP_NUMBER = "27697353252"
+WHATSAPP_NUMBER = "27697343252"
 INSTAGRAM_URL = "https://instagram.com/ashleysnowfx"
 TIKTOK_URL = "https://tiktok.com/@snowFx3"
 REQUEST_URL = "https://tw-trades-1.onrender.com/#request"
@@ -967,6 +967,181 @@ text-align:center;
 TW TRADES PUBLIC ACCESS
 </div>
 
+
+<!-- ==========================================================
+     TW TRADES PREMIUM PLATFORM UPGRADE
+     ========================================================== -->
+
+<section class="tw-upgrade" id="systems">
+
+<div class="tw-upgrade-head">
+
+<span class="tw-badge">TW TRADES INTELLIGENCE ECOSYSTEM</span>
+
+<h2>
+Trade With More <span style="color:#00ffd0;">Intelligence.</span>
+</h2>
+
+<p>
+Access the TW Trades ecosystem built around market intelligence,
+technical analysis, fundamental analysis, sentiment, scanning and
+the TW Blueprint approach.
+</p>
+
+</div>
+
+<div class="tw-package-grid">
+
+<div class="tw-package">
+
+<span class="tw-label">EDUCATION</span>
+
+<h3>TW Trades Mentorship</h3>
+
+<div class="tw-price">
+R300 <small style="font-size:14px;color:#8f9daf;">/ month</small>
+</div>
+
+<ul>
+<li>Technical analysis</li>
+<li>Fundamental analysis</li>
+<li>Support &amp; resistance</li>
+<li>ICC / TW Blueprint education</li>
+<li>Trading guidance</li>
+</ul>
+
+<a class="tw-package-btn"
+href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Mentorship%20for%20R300%20per%20month.">
+Request Mentorship
+</a>
+
+</div>
+
+
+<div class="tw-package featured">
+
+<span class="tw-label">PREMIUM SYSTEMS</span>
+
+<h3>Titan X + Yuki</h3>
+
+<div class="tw-price">
+R1,500
+</div>
+
+<ul>
+<li>Titan X intelligence system</li>
+<li>Yuki Scanner ecosystem</li>
+<li>Real-market intelligence</li>
+<li>Technical analysis</li>
+<li>Fundamental analysis</li>
+<li>Market sentiment intelligence</li>
+<li>Scanner and systems access</li>
+</ul>
+
+<a class="tw-package-btn primary"
+href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Premium%20Systems%20Access%20for%20R1500.">
+Request Systems Access
+</a>
+
+</div>
+
+
+<div class="tw-package">
+
+<span class="tw-label">PUBLIC ACCESS</span>
+
+<h3>TW Trades Platform</h3>
+
+<div class="tw-price">
+R400
+</div>
+
+<ul>
+<li>TW Trades platform access</li>
+<li>Market dashboard</li>
+<li>Live market intelligence</li>
+<li>Financial news</li>
+<li>Trading tools</li>
+<li>TW Trades ecosystem</li>
+</ul>
+
+<a class="tw-package-btn"
+href="https://wa.me/27693118405?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Public%20Access%20for%20R400.">
+Request Public Access
+</a>
+
+</div>
+
+</div>
+
+
+<div class="tw-intelligence">
+
+<div class="tw-intel">
+<strong>◈ Live Markets</strong>
+<span>
+Monitor supported forex, metals and other market instruments
+through the connected market-data infrastructure.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Market News</strong>
+<span>
+Financial-news intelligence powered by the connected MarketAux
+news service.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Titan X</strong>
+<span>
+Premium TW Trades intelligence layer for users with systems access.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Yuki Scanner</strong>
+<span>
+Scanner ecosystem designed to help identify market opportunities
+and organize analysis.
+</span>
+</div>
+
+</div>
+
+
+<div class="tw-contact-row">
+
+<a class="tw-contact"
+href="https://wa.me/27697343252"
+target="_blank">
+WhatsApp · +27 697 343 252
+</a>
+
+<a class="tw-contact"
+href="https://wa.me/27693118405"
+target="_blank">
+WhatsApp · +27 693 118 405
+</a>
+
+<a class="tw-contact"
+href="https://instagram.com/ashleysnowfx"
+target="_blank">
+Instagram · @ashleysnowfx
+</a>
+
+<a class="tw-contact"
+href="https://instagram.com/topwavetradesalltime"
+target="_blank">
+Instagram · @topwavetradesalltime
+</a>
+
+</div>
+
+</section>
+
+
 <h2 style="font-size:42px;margin:12px 0 8px;">
 PUBLIC ACCESS — <span style="color:#00ffd0;">R400</span>
 </h2>
@@ -975,7 +1150,7 @@ PUBLIC ACCESS — <span style="color:#00ffd0;">R400</span>
 Request access to the TW Trades ecosystem and receive the instructions directly through WhatsApp.
 </p>
 
-<a href="https://wa.me/27697353252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
+<a href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
 style="
 display:inline-block;
 padding:16px 32px;
@@ -1064,6 +1239,189 @@ ADMIN_HTML="""
 <title>TW Admin</title>
 
 <style>
+/* ============================================================
+   TW TRADES PREMIUM UPGRADE
+   ============================================================ */
+
+.tw-upgrade{
+max-width:1200px;
+margin:35px auto;
+padding:0 18px;
+}
+
+.tw-upgrade-head{
+text-align:center;
+margin-bottom:30px;
+}
+
+.tw-badge{
+display:inline-block;
+padding:7px 14px;
+border:1px solid rgba(0,255,208,.35);
+border-radius:999px;
+color:#00ffd0;
+font-size:12px;
+font-weight:900;
+letter-spacing:1.5px;
+margin-bottom:12px;
+}
+
+.tw-upgrade-head h2{
+font-size:clamp(30px,5vw,52px);
+margin:5px 0 10px;
+line-height:1.05;
+}
+
+.tw-upgrade-head p{
+max-width:720px;
+margin:auto;
+color:#9eacbd;
+line-height:1.7;
+}
+
+.tw-package-grid{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
+gap:18px;
+}
+
+.tw-package{
+position:relative;
+padding:26px;
+border:1px solid #253448;
+border-radius:22px;
+background:
+linear-gradient(145deg,rgba(20,31,46,.96),rgba(5,8,14,.96));
+box-shadow:0 18px 50px rgba(0,0,0,.25);
+transition:.25s ease;
+}
+
+.tw-package:hover{
+transform:translateY(-5px);
+border-color:#00ffd0;
+box-shadow:0 20px 60px rgba(0,255,208,.10);
+}
+
+.tw-package.featured{
+border-color:rgba(0,255,208,.65);
+box-shadow:0 0 45px rgba(0,255,208,.09);
+}
+
+.tw-package .tw-label{
+font-size:12px;
+font-weight:900;
+letter-spacing:1.4px;
+color:#00ffd0;
+}
+
+.tw-package h3{
+font-size:24px;
+margin:10px 0 5px;
+}
+
+.tw-price{
+font-size:34px;
+font-weight:950;
+margin:12px 0 20px;
+}
+
+.tw-package ul{
+list-style:none;
+padding:0;
+margin:0 0 22px;
+}
+
+.tw-package li{
+padding:8px 0;
+color:#c5d0dd;
+}
+
+.tw-package li:before{
+content:"✓";
+color:#00ffd0;
+font-weight:900;
+margin-right:9px;
+}
+
+.tw-package-btn{
+display:block;
+text-align:center;
+padding:13px 18px;
+border-radius:13px;
+text-decoration:none;
+font-weight:900;
+border:1px solid #304158;
+color:#fff;
+}
+
+.tw-package-btn.primary{
+background:#00ffd0;
+color:#03100e;
+border-color:#00ffd0;
+}
+
+.tw-intelligence{
+margin-top:25px;
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+gap:14px;
+}
+
+.tw-intel{
+padding:20px;
+border-radius:18px;
+border:1px solid #202e40;
+background:rgba(12,18,28,.82);
+}
+
+.tw-intel strong{
+display:block;
+font-size:18px;
+margin-bottom:7px;
+}
+
+.tw-intel span{
+color:#93a2b5;
+font-size:14px;
+line-height:1.55;
+}
+
+.tw-contact-row{
+display:flex;
+flex-wrap:wrap;
+justify-content:center;
+gap:10px;
+margin-top:24px;
+}
+
+.tw-contact{
+padding:11px 16px;
+border:1px solid #29384b;
+border-radius:12px;
+color:#fff;
+text-decoration:none;
+font-weight:700;
+}
+
+.tw-contact:hover{
+border-color:#00ffd0;
+color:#00ffd0;
+}
+
+@media(max-width:600px){
+.tw-upgrade{
+padding:0 12px;
+}
+
+.tw-package{
+padding:21px;
+}
+
+.tw-price{
+font-size:30px;
+}
+}
+
 body{
 background:#05070b;
 color:#edf3fb;
@@ -2446,7 +2804,7 @@ PUBLIC ACCESS — <span style="color:#00ffd0;">R400</span>
 Request access to the TW Trades ecosystem and receive the instructions directly through WhatsApp.
 </p>
 
-<a href="https://wa.me/27697353252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
+<a href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
 style="
 display:inline-block;
 padding:16px 32px;
