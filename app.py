@@ -1675,7 +1675,6 @@ TW<span>TRADES</span>
 <a href="#titan">Titan X</a>
 <a href="#yuki">Yuki</a>
 <a href="#academy">Academy</a>
-<a href="#request">Access</a>
 <a href="/admin">Admin</a>
 </div>
 
@@ -2125,90 +2124,6 @@ through advanced levels.
 
 </section>
 
-
-<!-- PUBLIC ACCESS -->
-<section id="request">
-
-<div class="section-head">
-<div class="kicker">TW TRADES ACCESS</div>
-<h2>Enter the TW Trades ecosystem.</h2>
-<p class="muted">
-Get public access to the TW Trades platform for
-<strong style="color:white;">R400</strong>.
-Request access directly through WhatsApp.
-</p>
-</div>
-
-<div class="cards">
-
-<div class="card big-card" style="
-border-color:#8299ff55;
-background:linear-gradient(145deg,#111c32,#080d15);
-">
-
-<span class="tag">PUBLIC ACCESS</span>
-
-<h3 style="font-size:38px;margin-top:15px;">
-R400
-</h3>
-
-<p class="muted">
-Access the TW Trades ecosystem including the
-TW Blueprint terminal, market intelligence,
-fundamental/news analysis, Titan X environment,
-Yuki workspace and The Autonomy of Success
-educational platform.
-</p>
-
-<div class="buttons">
-
-<a class="btn primary"
-href="https://wa.me/27697353252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
-target="_blank">
-REQUEST ACCESS — R400
-</a>
-
-</div>
-
-<p class="muted" style="font-size:12px;margin-top:15px;">
-Your request will be sent directly to WhatsApp.
-</p>
-
-</div>
-
-<div class="card">
-
-<span class="tag">FOLLOW TW TRADES</span>
-
-<h3>Stay connected.</h3>
-
-<p class="muted">
-Follow the latest TW Trades content, market
-education and updates.
-</p>
-
-<div class="buttons">
-
-<a class="btn"
-href="https://instagram.com/ashleysnowfx"
-target="_blank">
-INSTAGRAM
-</a>
-
-<a class="btn"
-href="https://tiktok.com/@snowFx3"
-target="_blank">
-TIKTOK
-</a>
-
-</div>
-
-</div>
-
-</div>
-
-</section>
-
 <footer class="footer">
 
 <strong>TW TRADES</strong>
@@ -2216,20 +2131,6 @@ TIKTOK
 <p>
 TW Blueprint • Titan X • Yuki •
 The Autonomy of Success
-</p>
-
-<p>
-<strong style="color:white;">R400 PUBLIC ACCESS</strong>
-<br>
-<a href="#request" style="color:#91a8ff;">Request Access</a>
-&nbsp; • &nbsp;
-<a href="https://instagram.com/ashleysnowfx"
-target="_blank"
-style="color:#91a8ff;">Instagram</a>
-&nbsp; • &nbsp;
-<a href="https://tiktok.com/@snowFx3"
-target="_blank"
-style="color:#91a8ff;">TikTok</a>
 </p>
 
 <p>
@@ -2267,18 +2168,13 @@ Yuki
 Academy
 </a>
 
-<a href="#request">
-<b>₽</b>
-Access
-</a>
-
 </div>
 
 <script>
 
 let lastScan=null;
 
-async function scan(){
+async function scan(){{
 
 const box=document.getElementById(
 "terminalResults"
@@ -2287,7 +2183,7 @@ const box=document.getElementById(
 box.innerHTML=
 '<div class="signal">SCANNING REAL DATA...</div>';
 
-try{
+try{{
 
 const r=await fetch("/api/scan");
 const data=await r.json();
@@ -2296,16 +2192,16 @@ lastScan=data;
 
 renderSignals(data.results||[]);
 
-}catch(e){
+}}catch(e){{
 
 box.innerHTML=
 '<div class="signal">DATA CONNECTION ERROR</div>';
 
-}
+}}
 
-}
+}}
 
-async function scanSymbol(symbol){
+async function scanSymbol(symbol){{
 
 const box=document.getElementById(
 "terminalResults"
@@ -2314,7 +2210,7 @@ const box=document.getElementById(
 box.innerHTML=
 '<div class="signal">ANALYZING '+symbol+'...</div>';
 
-try{
+try{{
 
 const r=await fetch(
 "/api/scan?symbol="+encodeURIComponent(symbol)
@@ -2322,31 +2218,31 @@ const r=await fetch(
 
 const data=await r.json();
 
-lastScan={
+lastScan={{
 results:data.status==="QUALIFIED"
 ?[data]:[]
-};
+}};
 
 renderSignals(lastScan.results);
 
 loadNews(symbol);
 
-}catch(e){
+}}catch(e){{
 
 box.innerHTML=
 '<div class="signal">ERROR</div>';
 
-}
+}}
 
-}
+}}
 
-function renderSignals(results){
+function renderSignals(results){{
 
 const box=document.getElementById(
 "terminalResults"
 );
 
-if(!results.length){
+if(!results.length){{
 
 box.innerHTML=`
 <div class="signal">
@@ -2359,79 +2255,79 @@ confluence to issue a signal.
 
 return;
 
-}
+}}
 
 box.innerHTML=results.map(x=>`
 
 <div class="signal">
 
 <div>
-<strong>${x.symbol}</strong>
-<span class="${x.direction==="BUY"?"buy":"sell"}">
-${x.direction}
+<strong>${{x.symbol}}</strong>
+<span class="${{x.direction==="BUY"?"buy":"sell"}}">
+${{x.direction}}
 </span>
 </div>
 
 <div class="price">
-${x.score}/100
+${{x.score}}/100
 </div>
 
 <div class="line">
 <span>Session</span>
-<b>${x.session}</b>
+<b>${{x.session}}</b>
 </div>
 
 <div class="line">
 <span>Entry</span>
-<b>${x.entry}</b>
+<b>${{x.entry}}</b>
 </div>
 
 <div class="line">
 <span>Stop</span>
-<b>${x.stop}</b>
+<b>${{x.stop}}</b>
 </div>
 
 <div class="line">
 <span>TP1</span>
-<b>${x.tp1}</b>
+<b>${{x.tp1}}</b>
 </div>
 
 <div class="line">
 <span>TP2</span>
-<b>${x.tp2}</b>
+<b>${{x.tp2}}</b>
 </div>
 
 <div class="line">
 <span>4H</span>
-<b>${x.trend4h}</b>
+<b>${{x.trend4h}}</b>
 </div>
 
 <div class="line">
 <span>1H</span>
-<b>${x.trend1h}</b>
+<b>${{x.trend1h}}</b>
 </div>
 
 <div class="line">
 <span>15M</span>
-<b>${x.trend15m}</b>
+<b>${{x.trend15m}}</b>
 </div>
 
 <div class="line">
 <span>Fundamental</span>
-<b>${x.fundamental?.bias||"N/A"}</b>
+<b>${{x.fundamental?.bias||"N/A"}}</b>
 </div>
 
 <p class="muted">
-${(x.reasons||[]).map(r=>"✓ "+r).join("<br>")}
+${{(x.reasons||[]).map(r=>"✓ "+r).join("<br>")}}
 </p>
 
 </div>
 
 `).join("");
 
-}
+}}
 
-async function loadNews(symbol){
+async function loadNews(symbol){{
 
 const r=await fetch(
 "/api/news?symbol="+encodeURIComponent(symbol)
@@ -2441,7 +2337,7 @@ const data=await r.json();
 
 const box=document.getElementById("news");
 
-if(!data.articles?.length){
+if(!data.articles?.length){{
 
 box.innerHTML=`
 <div class="news-item">
@@ -2453,7 +2349,7 @@ MarketAux returned no matching articles.
 
 return;
 
-}
+}}
 
 box.innerHTML=data.articles.map(a=>`
 
@@ -2464,65 +2360,65 @@ MARKETAUX
 </span>
 
 <h3>
-<a href="${a.url||"#"}"
+<a href="${{a.url||"#"}}"
 target="_blank">
-${a.title||"Financial news"}
+${{a.title||"Financial news"}}
 </a>
 </h3>
 
 <p class="muted">
-${a.description||a.snippet||""}
+${{a.description||a.snippet||""}}
 </p>
 
 </div>
 
 `).join("");
 
-}
+}}
 
-async function runAI(){
+async function runAI(){{
 
 const output=document.getElementById(
 "aiOutput"
 );
 
-if(!lastScan){
+if(!lastScan){{
 
 output.innerText=
 "Run a market scan first.";
 
 return;
 
-}
+}}
 
 output.innerText=
 "AI ANALYST IS PROCESSING THE MARKET EVIDENCE...";
 
-try{
+try{{
 
 const r=await fetch(
 "/api/ai",
-{
+{{
 method:"POST",
-headers:{
+headers:{{
 "Content-Type":"application/json"
-},
+}},
 body:JSON.stringify(lastScan)
-}
+}}
 );
 
 const data=await r.json();
 
 output.innerText=data.text;
 
-}catch(e){
+}}catch(e){{
 
 output.innerText=
 "AI connection failed.";
 
-}
+}}
 
-}
+}}
 
 </script>
 
