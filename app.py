@@ -1009,6 +1009,17 @@ TikTok · @snowFx3
 </div>
 </section>
 
+
+<!-- TW TRADES MOBILE NAV -->
+<div class="tw-mobile-nav">
+<a href="#top" class="active"><span>⌂</span>Home</a>
+<a href="#terminal"><span>◈</span>Terminal</a>
+<a href="#intelligence"><span>◉</span>Intel</a>
+<a href="#titan"><span>◆</span>Titan</a>
+<a href="#yuki"><span>✦</span>Yuki</a>
+<a href="#request"><span>↗</span>Access</a>
+</div>
+
 </body>
     </html>
     """
@@ -1285,6 +1296,88 @@ border:0;
 border-radius:10px;
 font-weight:bold;
 }
+
+/* ===== TW TRADES SAFE MOBILE UPGRADE ===== */
+.tw-mobile-nav{
+display:none;
+}
+
+.tw-mobile-nav a{
+text-decoration:none;
+color:#9aa8ba;
+font-size:10px;
+font-weight:800;
+letter-spacing:.3px;
+text-align:center;
+min-width:54px;
+}
+
+.tw-mobile-nav a span{
+display:block;
+font-size:18px;
+margin-bottom:3px;
+}
+
+@media(max-width:760px){
+.navlinks{
+display:none !important;
+}
+
+.menu{
+display:block !important;
+}
+
+body{
+padding-bottom:82px;
+}
+
+.tw-mobile-nav{
+position:fixed;
+left:10px;
+right:10px;
+bottom:10px;
+z-index:9999;
+display:flex;
+align-items:center;
+justify-content:space-around;
+gap:4px;
+padding:11px 7px;
+border:1px solid rgba(0,255,208,.18);
+border-radius:20px;
+background:rgba(4,10,18,.94);
+backdrop-filter:blur(18px);
+box-shadow:0 10px 35px rgba(0,0,0,.45),0 0 25px rgba(0,255,208,.06);
+}
+
+.tw-mobile-nav a.active,
+.tw-mobile-nav a:hover{
+color:#00ffd0;
+}
+
+.hero{
+padding-left:20px !important;
+padding-right:20px !important;
+}
+
+h1{
+font-size:clamp(42px,12vw,72px) !important;
+}
+
+.tw-upgrade{
+margin-left:15px !important;
+margin-right:15px !important;
+}
+
+#request{
+margin-left:15px !important;
+margin-right:15px !important;
+}
+
+#request h2{
+font-size:32px !important;
+}
+}
+
 </style>
 
 <div class="wrap">
@@ -1857,11 +1950,13 @@ TW<span>TRADES</span>
 </div>
 
 <div class="navlinks">
+<a href="#top">Home</a>
 <a href="#terminal">Terminal</a>
 <a href="#intelligence">Intelligence</a>
 <a href="#titan">Titan X</a>
 <a href="#yuki">Yuki</a>
 <a href="#academy">Academy</a>
+<a href="#request">Access</a>
 <a href="/admin">Admin</a>
 </div>
 
@@ -1873,7 +1968,7 @@ TW<span>TRADES</span>
 
 <!-- HERO -->
 
-<section class="hero">
+<section class="hero" id="top">
 
 <div class="hero-content">
 
