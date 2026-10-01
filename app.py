@@ -968,178 +968,7 @@ TW TRADES PUBLIC ACCESS
 </div>
 
 
-<!-- ==========================================================
-     TW TRADES PREMIUM PLATFORM UPGRADE
-     ========================================================== -->
 
-<section class="tw-upgrade" id="systems">
-
-<div class="tw-upgrade-head">
-
-<span class="tw-badge">TW TRADES INTELLIGENCE ECOSYSTEM</span>
-
-<h2>
-Trade With More <span style="color:#00ffd0;">Intelligence.</span>
-</h2>
-
-<p>
-Access the TW Trades ecosystem built around market intelligence,
-technical analysis, fundamental analysis, sentiment, scanning and
-the TW Blueprint approach.
-</p>
-
-</div>
-
-<div class="tw-package-grid">
-
-<div class="tw-package">
-
-<span class="tw-label">EDUCATION</span>
-
-<h3>TW Trades Mentorship</h3>
-
-<div class="tw-price">
-R300 <small style="font-size:14px;color:#8f9daf;">/ month</small>
-</div>
-
-<ul>
-<li>Technical analysis</li>
-<li>Fundamental analysis</li>
-<li>Support &amp; resistance</li>
-<li>ICC / TW Blueprint education</li>
-<li>Trading guidance</li>
-</ul>
-
-<a class="tw-package-btn"
-href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Mentorship%20for%20R300%20per%20month.">
-Request Mentorship
-</a>
-
-</div>
-
-
-<div class="tw-package featured">
-
-<span class="tw-label">PREMIUM SYSTEMS</span>
-
-<h3>Titan X + Yuki</h3>
-
-<div class="tw-price">
-R1,500
-</div>
-
-<ul>
-<li>Titan X intelligence system</li>
-<li>Yuki Scanner ecosystem</li>
-<li>Real-market intelligence</li>
-<li>Technical analysis</li>
-<li>Fundamental analysis</li>
-<li>Market sentiment intelligence</li>
-<li>Scanner and systems access</li>
-</ul>
-
-<a class="tw-package-btn primary"
-href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Premium%20Systems%20Access%20for%20R1500.">
-Request Systems Access
-</a>
-
-</div>
-
-
-<div class="tw-package">
-
-<span class="tw-label">PUBLIC ACCESS</span>
-
-<h3>TW Trades Platform</h3>
-
-<div class="tw-price">
-R400
-</div>
-
-<ul>
-<li>TW Trades platform access</li>
-<li>Market dashboard</li>
-<li>Live market intelligence</li>
-<li>Financial news</li>
-<li>Trading tools</li>
-<li>TW Trades ecosystem</li>
-</ul>
-
-<a class="tw-package-btn"
-href="https://wa.me/27693118405?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Public%20Access%20for%20R400.">
-Request Public Access
-</a>
-
-</div>
-
-</div>
-
-
-<div class="tw-intelligence">
-
-<div class="tw-intel">
-<strong>◈ Live Markets</strong>
-<span>
-Monitor supported forex, metals and other market instruments
-through the connected market-data infrastructure.
-</span>
-</div>
-
-<div class="tw-intel">
-<strong>◈ Market News</strong>
-<span>
-Financial-news intelligence powered by the connected MarketAux
-news service.
-</span>
-</div>
-
-<div class="tw-intel">
-<strong>◈ Titan X</strong>
-<span>
-Premium TW Trades intelligence layer for users with systems access.
-</span>
-</div>
-
-<div class="tw-intel">
-<strong>◈ Yuki Scanner</strong>
-<span>
-Scanner ecosystem designed to help identify market opportunities
-and organize analysis.
-</span>
-</div>
-
-</div>
-
-
-<div class="tw-contact-row">
-
-<a class="tw-contact"
-href="https://wa.me/27697343252"
-target="_blank">
-WhatsApp · +27 697 343 252
-</a>
-
-<a class="tw-contact"
-href="https://wa.me/27693118405"
-target="_blank">
-WhatsApp · +27 693 118 405
-</a>
-
-<a class="tw-contact"
-href="https://instagram.com/ashleysnowfx"
-target="_blank">
-Instagram · @ashleysnowfx
-</a>
-
-<a class="tw-contact"
-href="https://instagram.com/topwavetradesalltime"
-target="_blank">
-Instagram · @topwavetradesalltime
-</a>
-
-</div>
-
-</section>
 
 
 <h2 style="font-size:42px;margin:12px 0 8px;">
@@ -2780,6 +2609,179 @@ output.innerText=
 
 </script>
 
+
+<!-- ==========================================================
+     TW TRADES PREMIUM PLATFORM UPGRADE
+     ========================================================== -->
+
+<section class="tw-upgrade" id="systems">
+
+<div class="tw-upgrade-head">
+
+<span class="tw-badge">TW TRADES INTELLIGENCE ECOSYSTEM</span>
+
+<h2>
+Trade With More <span style="color:#00ffd0;">Intelligence.</span>
+</h2>
+
+<p>
+Access the TW Trades ecosystem built around market intelligence,
+technical analysis, fundamental analysis, sentiment, scanning and
+the TW Blueprint approach.
+</p>
+
+</div>
+
+<div class="tw-package-grid">
+
+<div class="tw-package">
+
+<span class="tw-label">EDUCATION</span>
+
+<h3>TW Trades Mentorship</h3>
+
+<div class="tw-price">
+R300 <small style="font-size:14px;color:#8f9daf;">/ month</small>
+</div>
+
+<ul>
+<li>Technical analysis</li>
+<li>Fundamental analysis</li>
+<li>Support &amp; resistance</li>
+<li>ICC / TW Blueprint education</li>
+<li>Trading guidance</li>
+</ul>
+
+<a class="tw-package-btn"
+href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Mentorship%20for%20R300%20per%20month.">
+Request Mentorship
+</a>
+
+</div>
+
+
+<div class="tw-package featured">
+
+<span class="tw-label">PREMIUM SYSTEMS</span>
+
+<h3>Titan X + Yuki</h3>
+
+<div class="tw-price">
+R1,500
+</div>
+
+<ul>
+<li>Titan X intelligence system</li>
+<li>Yuki Scanner ecosystem</li>
+<li>Real-market intelligence</li>
+<li>Technical analysis</li>
+<li>Fundamental analysis</li>
+<li>Market sentiment intelligence</li>
+<li>Scanner and systems access</li>
+</ul>
+
+<a class="tw-package-btn primary"
+href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Premium%20Systems%20Access%20for%20R1500.">
+Request Systems Access
+</a>
+
+</div>
+
+
+<div class="tw-package">
+
+<span class="tw-label">PUBLIC ACCESS</span>
+
+<h3>TW Trades Platform</h3>
+
+<div class="tw-price">
+R400
+</div>
+
+<ul>
+<li>TW Trades platform access</li>
+<li>Market dashboard</li>
+<li>Live market intelligence</li>
+<li>Financial news</li>
+<li>Trading tools</li>
+<li>TW Trades ecosystem</li>
+</ul>
+
+<a class="tw-package-btn"
+href="https://wa.me/27693118405?text=Hi%20Neo%2C%20I%20want%20TW%20Trades%20Public%20Access%20for%20R400.">
+Request Public Access
+</a>
+
+</div>
+
+</div>
+
+
+<div class="tw-intelligence">
+
+<div class="tw-intel">
+<strong>◈ Live Markets</strong>
+<span>
+Monitor supported forex, metals and other market instruments
+through the connected market-data infrastructure.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Market News</strong>
+<span>
+Financial-news intelligence powered by the connected MarketAux
+news service.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Titan X</strong>
+<span>
+Premium TW Trades intelligence layer for users with systems access.
+</span>
+</div>
+
+<div class="tw-intel">
+<strong>◈ Yuki Scanner</strong>
+<span>
+Scanner ecosystem designed to help identify market opportunities
+and organize analysis.
+</span>
+</div>
+
+</div>
+
+
+<div class="tw-contact-row">
+
+<a class="tw-contact"
+href="https://wa.me/27697343252"
+target="_blank">
+WhatsApp · +27 697 343 252
+</a>
+
+<a class="tw-contact"
+href="https://wa.me/27693118405"
+target="_blank">
+WhatsApp · +27 693 118 405
+</a>
+
+<a class="tw-contact"
+href="https://instagram.com/ashleysnowfx"
+target="_blank">
+Instagram · @ashleysnowfx
+</a>
+
+<a class="tw-contact"
+href="https://instagram.com/topwavetradesalltime"
+target="_blank">
+Instagram · @topwavetradesalltime
+</a>
+
+</div>
+
+</section>
 
 <!-- TW TRADES PUBLIC ACCESS -->
 <section id="request" style="
