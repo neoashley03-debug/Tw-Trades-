@@ -1020,6 +1020,18 @@ TikTok · @snowFx3
 <a href="#request"><span>↗</span>Access</a>
 </div>
 
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js", {scope: "/"})
+      .catch(function(error) {
+        console.log("TW Trades service worker:", error);
+      });
+  });
+}
+</script>
+
 </body>
     </html>
     """
@@ -1438,6 +1450,18 @@ type="password">
 # ============================================================
 # FULL PLATFORM
 # ============================================================
+
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    return app.send_static_file("manifest.json")
+
+@app.route("/sw.js")
+def pwa_service_worker():
+    response = app.send_static_file("sw.js")
+    response.headers["Content-Type"] = "application/javascript"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
 
 PAGE="""
 <!doctype html>
@@ -1939,6 +1963,14 @@ font-size:17px;
 }
 
 </style>
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#00ffd0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TW Trades">
+
 </head>
 
 <body>

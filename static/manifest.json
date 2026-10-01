@@ -1,0 +1,23 @@
+{
+  "name": "TW Trades",
+  "short_name": "TW Trades",
+  "description": "TW Trades Intelligence Ecosystem — markets, trading intelligence, Titan X, Yuki and TW Blueprint.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#03070d",
+  "theme_color": "#00ffd0",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
