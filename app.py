@@ -952,6 +952,74 @@ def login():
     </button>
     </form>
     
+
+<!-- TW TRADES LIBRARY -->
+<section id="library" style="margin:70px auto;max-width:1100px;padding:45px 25px;border:1px solid rgba(0,255,208,.16);border-radius:28px;background:linear-gradient(135deg,rgba(7,16,27,.98),rgba(3,8,15,.98));box-shadow:0 0 45px rgba(0,255,208,.06);">
+
+<div style="text-align:center;margin-bottom:30px;">
+<div style="font-size:13px;letter-spacing:3px;color:#00ffd0;font-weight:800;">TW TRADES EDUCATION</div>
+<h2 style="font-size:42px;margin:12px 0 8px;">TW Trades <span style="color:#00ffd0;">Library</span></h2>
+<p style="max-width:720px;margin:auto;color:#aab7c8;line-height:1.7;">
+Trading psychology, event preparation, price action, fundamentals and risk-management resources.
+</p>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;">
+
+<a href="/static/library/The-Disciplined-Trader-Expanded.pdf" target="_blank" style="text-decoration:none;color:inherit;">
+<div style="height:100%;padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(255,255,255,.025);transition:.25s;">
+<div style="font-size:30px;margin-bottom:12px;">📘</div>
+<h3 style="margin:0 0 10px;">The Disciplined Trader</h3>
+<p style="color:#8f9bad;line-height:1.6;font-size:14px;">Expanded trading psychology and discipline resource.</p>
+<span style="color:#00ffd0;font-weight:700;">Open PDF →</span>
+</div>
+</a>
+
+<a href="/static/library/TW_NFP_CPI_Playbook_Kit_Visual_Edition.pdf" target="_blank" style="text-decoration:none;color:inherit;">
+<div style="height:100%;padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(255,255,255,.025);">
+<div style="font-size:30px;margin-bottom:12px;">📊</div>
+<h3 style="margin:0 0 10px;">TW NFP + CPI Playbook</h3>
+<p style="color:#8f9bad;line-height:1.6;font-size:14px;">Visual preparation guide for major economic events.</p>
+<span style="color:#00ffd0;font-weight:700;">Open PDF →</span>
+</div>
+</a>
+
+<a href="/static/library/TW_Price_Action_and_Support_Resistance_Guide.pdf" target="_blank" style="text-decoration:none;color:inherit;">
+<div style="height:100%;padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(255,255,255,.025);">
+<div style="font-size:30px;margin-bottom:12px;">📈</div>
+<h3 style="margin:0 0 10px;">Price Action & S/R Guide</h3>
+<p style="color:#8f9bad;line-height:1.6;font-size:14px;">Market structure, support/resistance, breakouts and retests.</p>
+<span style="color:#00ffd0;font-weight:700;">Open PDF →</span>
+</div>
+</a>
+
+<a href="/static/library/TW_Forex_Fundamentals_and_Macro_Guide.pdf" target="_blank" style="text-decoration:none;color:inherit;">
+<div style="height:100%;padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(255,255,255,.025);">
+<div style="font-size:30px;margin-bottom:12px;">🌍</div>
+<h3 style="margin:0 0 10px;">Forex Fundamentals & Macro</h3>
+<p style="color:#8f9bad;line-height:1.6;font-size:14px;">Interest rates, inflation, employment, central banks and macro drivers.</p>
+<span style="color:#00ffd0;font-weight:700;">Open PDF →</span>
+</div>
+</a>
+
+<a href="/static/library/TW_Trading_Risk_Management_Handbook.pdf" target="_blank" style="text-decoration:none;color:inherit;">
+<div style="height:100%;padding:24px;border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(255,255,255,.025);">
+<div style="font-size:30px;margin-bottom:12px;">🛡️</div>
+<h3 style="margin:0 0 10px;">Trading Risk Management</h3>
+<p style="color:#8f9bad;line-height:1.6;font-size:14px;">Risk, position sizing, drawdown control and trading safeguards.</p>
+<span style="color:#00ffd0;font-weight:700;">Open PDF →</span>
+</div>
+</a>
+
+</div>
+
+<p style="text-align:center;color:#718096;font-size:12px;margin-top:24px;">
+Educational material only. Trading involves risk. No content guarantees trading results.
+</p>
+
+</section>
+<!-- END TW TRADES LIBRARY -->
+
 <!-- TW TRADES PUBLIC ACCESS -->
 <section id="request" style="
 margin:60px auto;
@@ -1987,7 +2055,7 @@ TW<span>TRADES</span>
 <a href="#intelligence">Intelligence</a>
 <a href="#titan">Titan X</a>
 <a href="#yuki">Yuki</a>
-<a href="#academy">Academy</a>
+<a href="#academy">Academy</a><a href="#library">Library</a>
 <a href="#request">Access</a>
 <a href="/admin">Admin</a>
 </div>
