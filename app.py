@@ -4195,6 +4195,68 @@ TikTok · @snowFx3
     margin-top:0;
 }
 
+
+.tw-lesson{
+    cursor:pointer;
+    transition:.2s;
+    position:relative;
+}
+
+.tw-lesson:hover{
+    border-color:rgba(0,255,208,.35);
+    transform:translateY(-2px);
+    background:rgba(0,255,208,.045);
+}
+
+.tw-lesson:after{
+    content:"OPEN LESSON →";
+    position:absolute;
+    right:15px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#00ffd0;
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:1px;
+}
+
+.tw-lesson-detail{
+    padding:20px;
+    border-radius:17px;
+    border:1px solid rgba(255,255,255,.07);
+    background:rgba(255,255,255,.025);
+    margin-bottom:15px;
+}
+
+.tw-lesson-detail h3{
+    color:#00ffd0;
+    margin-top:0;
+}
+
+.tw-lesson-detail p{
+    color:#aab7c8;
+    line-height:1.75;
+}
+
+.tw-lesson-detail ul{
+    color:#aab7c8;
+    line-height:1.8;
+    padding-left:22px;
+}
+
+.tw-lesson-exercise{
+    margin-top:18px;
+    padding:17px;
+    border-radius:15px;
+    border:1px solid rgba(0,255,208,.16);
+    background:rgba(0,255,208,.035);
+}
+
+.tw-lesson-exercise strong{
+    color:#00ffd0;
+}
+
+
 .tw-lesson{
     padding:15px;
     margin:9px 0;
@@ -4466,6 +4528,42 @@ TikTok · @snowFx3
     </div>
 
 </section>
+
+
+
+<!-- TW LESSON DETAIL MODAL -->
+
+<div id="twLessonDetailModal" class="tw-academy-modal">
+
+    <div class="tw-academy-panel">
+
+        <div style="display:flex;justify-content:space-between;gap:15px;align-items:start;">
+
+            <div>
+                <div class="tw-live-kicker">
+                    THE AUTONOMY OF SUCCESS
+                </div>
+
+                <h2 id="twLessonDetailTitle">
+                    Lesson
+                </h2>
+            </div>
+
+            <button id="twLessonDetailClose"
+                    class="tw-live-action secondary"
+                    type="button">
+                CLOSE
+            </button>
+
+        </div>
+
+        <div id="twLessonDetailBody"
+             style="margin-top:20px;">
+        </div>
+
+    </div>
+
+</div>
 
 
 <!-- ACADEMY LESSON MODAL -->
@@ -5031,17 +5129,26 @@ TikTok · @snowFx3
                 academyLessons.innerHTML =
                     lessons.map(function(lesson,index){
 
+                        const cleanLesson =
+                            lesson.replace(
+                                /^\d+\.\s*/,
+                                ""
+                            );
+
                         return `
-                        <div class="tw-lesson">
+                        <div class="tw-lesson"
+                             tabindex="0"
+                             role="button"
+                             data-lesson-title="${esc(cleanLesson)}">
+
                             <strong>
                                 Lesson ${index + 1}
                             </strong>
-                            <div style="margin-top:5px;">
-                                ${esc(lesson.replace(
-                                    /^\\d+\\.\\s*/,
-                                    ""
-                                ))}
+
+                            <div style="margin-top:5px;padding-right:105px;">
+                                ${esc(cleanLesson)}
                             </div>
+
                         </div>`;
 
                     }).join("");
@@ -5109,6 +5216,462 @@ TikTok · @snowFx3
         });
 
 
+
+    /* ========================================================
+       TW TRADES LESSON ENGINE
+    ======================================================== */
+
+    const lessonDetailModal =
+        document.getElementById(
+            "twLessonDetailModal"
+        );
+
+    const lessonDetailTitle =
+        document.getElementById(
+            "twLessonDetailTitle"
+        );
+
+    const lessonDetailBody =
+        document.getElementById(
+            "twLessonDetailBody"
+        );
+
+
+    function lessonData(title){
+
+        const t =
+            String(title || "")
+            .toLowerCase();
+
+
+        if(t.includes("what is forex")){
+
+            return {
+                title:"What is Forex?",
+                intro:"Forex is the global marketplace where currencies are exchanged against one another.",
+                concepts:[
+                    "Currency pairs quote one currency against another.",
+                    "The first currency is the base currency and the second is the quote currency.",
+                    "Price movement represents a change in the relative value between the two currencies.",
+                    "Forex operates across major financial centres and trading sessions."
+                ],
+                practical:"Open EUR/USD on the TradingView terminal and identify which currency is the base currency and which is the quote currency."
+            };
+
+        }
+
+
+        if(t.includes("currency pair")){
+
+            return {
+                title:"Currency Pairs",
+                intro:"Currency pairs provide the basic structure of a forex quote.",
+                concepts:[
+                    "Major pairs commonly involve the US dollar.",
+                    "Cross pairs exclude USD from the pair.",
+                    "The quoted price tells you how much of the quote currency is needed for one unit of the base currency.",
+                    "Always understand the pair before analysing its chart."
+                ],
+                practical:"Compare EUR/USD, GBP/USD and USD/JPY on the TradingView terminal. Record the base and quote currency for each."
+            };
+
+        }
+
+
+        if(
+            t.includes("pip") ||
+            t.includes("lot") ||
+            t.includes("spread")
+        ){
+
+            return {
+                title:"Pips, Lots and Spreads",
+                intro:"Position size, price increments and transaction costs are fundamental parts of trade planning.",
+                concepts:[
+                    "A pip is a standardised unit used to describe many currency-price movements.",
+                    "A lot describes position size.",
+                    "The spread is the difference between the bid and ask price.",
+                    "Larger position sizes increase both potential gains and potential losses.",
+                    "Trading costs should be considered before entering."
+                ],
+                practical:"Before opening a trade, calculate the intended position size and identify the spread on the instrument."
+            };
+
+        }
+
+
+        if(
+            t.includes("leverage") ||
+            t.includes("margin")
+        ){
+
+            return {
+                title:"Leverage and Margin",
+                intro:"Leverage allows a trader to control a larger position with less capital, while margin is the capital required to support that position.",
+                concepts:[
+                    "Leverage increases exposure relative to account capital.",
+                    "Margin is not the same thing as maximum affordable risk.",
+                    "High leverage can amplify losses as well as gains.",
+                    "Position sizing and stop placement remain essential."
+                ],
+                practical:"Calculate how much account capital would be exposed if price reaches your predefined invalidation level."
+            };
+
+        }
+
+
+        if(t.includes("trading session")){
+
+            return {
+                title:"Trading Sessions",
+                intro:"Global financial centres create different market sessions with different levels of activity and liquidity.",
+                concepts:[
+                    "Asian, London and New York sessions overlap at different times.",
+                    "Session overlaps can produce changes in activity.",
+                    "The most active period for an instrument depends on its underlying markets.",
+                    "Session context should be combined with price structure rather than used as a standalone signal."
+                ],
+                practical:"Use the TradingView chart and mark the Asian, London and New York session ranges for an instrument you follow."
+            };
+
+        }
+
+
+        if(
+            t.includes("support") ||
+            t.includes("resistance")
+        ){
+
+            return {
+                title:"Support and Resistance",
+                intro:"Support and resistance are price areas where previous market behaviour may provide useful context.",
+                concepts:[
+                    "Support can describe an area where selling pressure previously weakened.",
+                    "Resistance can describe an area where buying pressure previously weakened.",
+                    "Levels should be treated as areas rather than guaranteed reversal points.",
+                    "Higher-timeframe structure can provide important context.",
+                    "A level becomes more useful when combined with price action and market context."
+                ],
+                practical:"Mark two significant support areas and two significant resistance areas on the XAU/USD chart."
+            };
+
+        }
+
+
+        if(
+            t.includes("price action") ||
+            t.includes("candlestick")
+        ){
+
+            return {
+                title:"Price Action and Candlesticks",
+                intro:"Price action analysis focuses on how price behaves rather than relying solely on indicators.",
+                concepts:[
+                    "Candlestick bodies show the opening and closing relationship.",
+                    "Wicks show price exploration beyond the body.",
+                    "Sequences of candles can reveal momentum and rejection.",
+                    "Structure should be considered across multiple timeframes.",
+                    "A single candle should not automatically be treated as a complete trading signal."
+                ],
+                practical:"Switch between the 4H, 1H and 5M charts and compare the structure before considering an entry."
+            };
+
+        }
+
+
+        if(
+            t.includes("fundamental") ||
+            t.includes("macro")
+        ){
+
+            return {
+                title:"Fundamental Analysis",
+                intro:"Fundamental analysis examines economic conditions and events that can influence financial markets.",
+                concepts:[
+                    "Interest rates can affect currency valuation and capital flows.",
+                    "Inflation data can influence expectations about monetary policy.",
+                    "Employment data can change expectations about economic conditions.",
+                    "Central-bank communication can affect market expectations.",
+                    "Fundamental information should be considered alongside actual price behaviour."
+                ],
+                practical:"Check the current economic calendar before analysing a major currency pair and note the highest-impact events."
+            };
+
+        }
+
+
+        if(
+            t.includes("nfp") ||
+            t.includes("cpi")
+        ){
+
+            return {
+                title:"NFP and CPI Preparation",
+                intro:"Major economic releases can produce rapid price movement and increased volatility.",
+                concepts:[
+                    "NFP is a major US employment report.",
+                    "CPI measures changes in consumer prices and is closely watched for inflation trends.",
+                    "Market reaction depends on expectations as well as the released number.",
+                    "Spread and volatility conditions can change around major releases.",
+                    "A predefined risk plan is important during high-volatility events."
+                ],
+                practical:"Before a major release, mark the previous day's high and low and identify the nearest higher-timeframe support and resistance."
+            };
+
+        }
+
+
+        if(
+            t.includes("risk") ||
+            t.includes("money management")
+        ){
+
+            return {
+                title:"Risk Management",
+                intro:"Risk management defines how much capital is exposed when a trade idea is wrong.",
+                concepts:[
+                    "Define invalidation before entry.",
+                    "Position size should be connected to the amount being risked.",
+                    "A stop-loss should represent a meaningful invalidation point rather than an arbitrary distance.",
+                    "Avoid increasing exposure simply because a position is losing.",
+                    "A trading plan should define maximum daily and weekly risk."
+                ],
+                practical:"Create a trade plan containing entry, invalidation, position size, maximum loss and target before placing an order."
+            };
+
+        }
+
+
+        if(
+            t.includes("psychology") ||
+            t.includes("discipline")
+        ){
+
+            return {
+                title:"Trading Psychology and Discipline",
+                intro:"A structured process can help separate analysis from emotional reactions to individual trades.",
+                concepts:[
+                    "Follow predefined entry and risk rules.",
+                    "Do not change a plan solely because of short-term price movement.",
+                    "Keep a journal of decisions rather than only recording profits and losses.",
+                    "Review repeated mistakes for patterns.",
+                    "A losing trade does not automatically mean the analysis process was invalid, and a winning trade does not automatically prove it was correct."
+                ],
+                practical:"After your next trade, record the setup, reason for entry, risk, execution and whether you followed your rules."
+            };
+
+        }
+
+
+        if(
+            t.includes("indication") ||
+            t.includes("correction") ||
+            t.includes("continuation") ||
+            t.includes("icc") ||
+            t.includes("blueprint")
+        ){
+
+            return {
+                title:"TW Blueprint — Indication, Correction, Continuation",
+                intro:"The TW Blueprint framework separates a potential directional move into structural stages.",
+                concepts:[
+                    "Indication identifies the initial structural change or directional evidence.",
+                    "Correction describes the retracement or pullback after the indication.",
+                    "Continuation describes renewed movement in the indicated direction.",
+                    "Higher-timeframe structure provides context for lower-timeframe execution.",
+                    "The framework should be tested against actual price behaviour rather than treated as a guaranteed signal."
+                ],
+                practical:"On a TradingView chart, identify a previous indication, correction and continuation sequence and mark each stage."
+            };
+
+        }
+
+
+        return {
+            title:title || "TW Trades Lesson",
+            intro:"This lesson is part of the TW Trades education system.",
+            concepts:[
+                "Understand the definition of the topic.",
+                "Identify the concept on a real market chart.",
+                "Connect the concept to your trading plan.",
+                "Record your observations in a trading journal."
+            ],
+            practical:"Apply the lesson to a real chart using the TradingView terminal and document what you observe."
+        };
+
+    }
+
+
+    function openLessonDetail(title){
+
+        const data =
+            lessonData(title);
+
+        if(lessonDetailTitle){
+            lessonDetailTitle.textContent =
+                data.title;
+        }
+
+        if(lessonDetailBody){
+
+            lessonDetailBody.innerHTML = `
+
+                <div class="tw-lesson-detail">
+
+                    <h3>
+                        Lesson overview
+                    </h3>
+
+                    <p>
+                        ${esc(data.intro)}
+                    </p>
+
+                </div>
+
+                <div class="tw-lesson-detail">
+
+                    <h3>
+                        Key concepts
+                    </h3>
+
+                    <ul>
+                        ${data.concepts
+                            .map(function(item){
+                                return "<li>" +
+                                    esc(item) +
+                                    "</li>";
+                            })
+                            .join("")}
+                    </ul>
+
+                </div>
+
+                <div class="tw-lesson-exercise">
+
+                    <strong>
+                        PRACTICAL EXERCISE
+                    </strong>
+
+                    <p style="margin-bottom:0;color:#aab7c8;line-height:1.7;">
+                        ${esc(data.practical)}
+                    </p>
+
+                </div>
+
+            `;
+
+        }
+
+        if(lessonDetailModal){
+            lessonDetailModal.classList.add(
+                "open"
+            );
+        }
+
+    }
+
+
+    function bindLessonButtons(){
+
+        if(!academyLessons) return;
+
+        academyLessons
+            .querySelectorAll(
+                "[data-lesson-title]"
+            )
+            .forEach(function(lesson){
+
+                lesson.addEventListener(
+                    "click",
+                    function(){
+
+                        openLessonDetail(
+                            lesson.getAttribute(
+                                "data-lesson-title"
+                            )
+                        );
+
+                    }
+                );
+
+                lesson.addEventListener(
+                    "keydown",
+                    function(event){
+
+                        if(
+                            event.key === "Enter" ||
+                            event.key === " "
+                        ){
+
+                            event.preventDefault();
+
+                            openLessonDetail(
+                                lesson.getAttribute(
+                                    "data-lesson-title"
+                                )
+                            );
+
+                        }
+
+                    }
+                );
+
+            });
+
+    }
+
+
+    /* Re-bind whenever a course is opened */
+    const originalOpenAcademyCard =
+        openAcademyCard;
+
+    openAcademyCard = function(card){
+
+        originalOpenAcademyCard(card);
+
+        setTimeout(
+            bindLessonButtons,
+            30
+        );
+
+    };
+
+
+    document
+        .getElementById(
+            "twLessonDetailClose"
+        )
+        ?.addEventListener(
+            "click",
+            function(){
+
+                lessonDetailModal
+                    ?.classList.remove("open");
+
+            }
+        );
+
+
+    lessonDetailModal
+        ?.addEventListener(
+            "click",
+            function(event){
+
+                if(
+                    event.target ===
+                    lessonDetailModal
+                ){
+
+                    lessonDetailModal
+                        .classList.remove("open");
+
+                }
+
+            }
+        );
+
+
+
     document
         .getElementById("twAcademyClose")
         ?.addEventListener(
@@ -5137,6 +5700,32 @@ TikTok · @snowFx3
 
             }
         );
+
+
+
+    /* ========================================================
+       LESSON CLICK FALLBACK
+    ======================================================== */
+
+    document.addEventListener(
+        "click",
+        function(event){
+
+            const lesson =
+                event.target.closest(
+                    "#twAcademyLessons [data-lesson-title]"
+                );
+
+            if(!lesson) return;
+
+            openLessonDetail(
+                lesson.getAttribute(
+                    "data-lesson-title"
+                )
+            );
+
+        }
+    );
 
 
     /* ========================================================
