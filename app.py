@@ -2727,7 +2727,7 @@ TW<span>TRADES</span>
 <div class="navlinks">
 <a href="#top">Home</a>
 <a href="#terminal">Terminal</a>
-<a href="#intelligence">Intelligence</a>
+<a href="#intelligence">Intelligence</a><a href="#scanner">Scanner</a>
 <a href="#titan">Titan X</a>
 <a href="#yuki">Yuki</a>
 <a href="#academy">Academy</a><a href="#library">Library</a>
@@ -2946,7 +2946,7 @@ news and sentiment.
 
 <!-- AI -->
 
-<section>
+<section id="ai-intelligence">
 
 <div class="section-head">
 <div class="kicker">AI INTELLIGENCE</div>
@@ -3851,7 +3851,25 @@ window.twSelectAsset=function(asset){
 twCurrentAsset=asset;
 const symbol=document.getElementById("tw-terminal-symbol");
 if(symbol) symbol.textContent=asset;
-twRunTerminal();
+
+if(typeof window.twRunTerminal === "function"){
+    window.twRunTerminal();
+}
+
+const tvSymbols={
+    "XAU/USD":"OANDA:XAUUSD",
+    "EUR/USD":"FX:EURUSD",
+    "GBP/USD":"FX:GBPUSD",
+    "USD/JPY":"FX:USDJPY",
+    "NASDAQ":"NASDAQ:NDX",
+    "BTC/USD":"COINBASE:BTCUSD"
+};
+
+if(typeof window.twLoadTradingView === "function"){
+    window.twLoadTradingView(
+        tvSymbols[asset] || "OANDA:XAUUSD"
+    );
+}
 };
 
 window.twRunTerminal=async function twRunTerminal(){
@@ -3883,17 +3901,17 @@ if(data.continuation) document.getElementById("tw-continuation").textContent=dat
 
 if(data.technical){
 document.getElementById("tw-tech").textContent=data.technical;
-document.getElementById("tw-tech-bar").style.width="70%";
+document.getElementById("tw-tech-bar").style.width="0%";
 }
 
 if(data.fundamental){
 document.getElementById("tw-fund").textContent=data.fundamental;
-document.getElementById("tw-fund-bar").style.width="65%";
+document.getElementById("tw-fund-bar").style.width="0%";
 }
 
 if(data.sentiment){
 document.getElementById("tw-sentiment").textContent=data.sentiment;
-document.getElementById("tw-sentiment-bar").style.width="60%";
+document.getElementById("tw-sentiment-bar").style.width="0%";
 }
 
 if(msg) msg.textContent="Live analysis returned for "+twCurrentAsset+".";
@@ -3962,6 +3980,1430 @@ TikTok · @snowFx3
 </a>
 </div>
 </section>
+
+
+
+<!-- =========================================================
+     TW TRADES LIVE MARKET UPGRADE
+========================================================= -->
+
+<style>
+
+#tw-live-market-upgrade{
+    max-width:1200px;
+    margin:70px auto;
+    padding:18px;
+}
+
+.tw-live-card{
+    background:linear-gradient(145deg,#07101b,#03070d);
+    border:1px solid rgba(0,255,208,.14);
+    border-radius:26px;
+    padding:24px;
+    margin-bottom:22px;
+    box-shadow:0 20px 70px rgba(0,0,0,.30);
+}
+
+.tw-live-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:15px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+}
+
+.tw-live-kicker{
+    color:#00ffd0;
+    font-size:11px;
+    letter-spacing:3px;
+    font-weight:900;
+}
+
+.tw-live-title{
+    font-size:34px;
+    margin:7px 0;
+    font-weight:900;
+}
+
+.tw-live-muted{
+    color:#8190a5;
+    line-height:1.6;
+    font-size:14px;
+}
+
+.tw-live-controls{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:16px;
+}
+
+.tw-market-btn{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.035);
+    color:#b9c5d5;
+    padding:10px 15px;
+    border-radius:999px;
+    cursor:pointer;
+    font-weight:800;
+    transition:.2s;
+}
+
+.tw-market-btn:hover,
+.tw-market-btn.active{
+    border-color:rgba(0,255,208,.55);
+    background:rgba(0,255,208,.10);
+    color:#00ffd0;
+    transform:translateY(-1px);
+}
+
+.tw-chart-wrap{
+    height:620px;
+    min-height:430px;
+    overflow:hidden;
+    border-radius:20px;
+    border:1px solid rgba(255,255,255,.07);
+    background:#050a10;
+}
+
+#twTradingViewChart{
+    width:100%;
+    height:100%;
+}
+
+.tw-scanner-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:14px;
+}
+
+.tw-scan-row{
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.025);
+    border-radius:18px;
+    padding:18px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.tw-scan-row:hover{
+    border-color:rgba(0,255,208,.35);
+    transform:translateY(-2px);
+}
+
+.tw-scan-top{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:center;
+    margin-bottom:12px;
+}
+
+.tw-scan-symbol{
+    font-size:18px;
+    font-weight:900;
+}
+
+.tw-scan-status{
+    font-size:10px;
+    letter-spacing:1px;
+    color:#718096;
+}
+
+.tw-scan-bias{
+    font-size:20px;
+    font-weight:900;
+    margin-bottom:12px;
+}
+
+.tw-scan-meta{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+}
+
+.tw-scan-meta div{
+    padding:9px;
+    border-radius:10px;
+    background:rgba(255,255,255,.035);
+}
+
+.tw-scan-meta span{
+    display:block;
+    font-size:9px;
+    letter-spacing:1px;
+    color:#657389;
+    margin-bottom:4px;
+}
+
+.tw-scan-meta strong{
+    font-size:12px;
+}
+
+.tw-scanner-actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:18px;
+}
+
+.tw-live-action{
+    border:1px solid rgba(0,255,208,.25);
+    background:rgba(0,255,208,.07);
+    color:#00ffd0;
+    padding:11px 17px;
+    border-radius:12px;
+    font-weight:900;
+    cursor:pointer;
+}
+
+.tw-live-action.secondary{
+    border-color:rgba(255,255,255,.10);
+    background:rgba(255,255,255,.035);
+    color:#b9c5d5;
+}
+
+.tw-academy-modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.78);
+    backdrop-filter:blur(10px);
+    z-index:99999;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+}
+
+.tw-academy-modal.open{
+    display:flex;
+}
+
+.tw-academy-panel{
+    width:min(760px,100%);
+    max-height:88vh;
+    overflow:auto;
+    background:#07101b;
+    border:1px solid rgba(0,255,208,.20);
+    border-radius:25px;
+    padding:26px;
+    box-shadow:0 30px 100px rgba(0,0,0,.55);
+}
+
+.tw-academy-panel h2{
+    margin-top:0;
+}
+
+.tw-lesson{
+    padding:15px;
+    margin:9px 0;
+    border-radius:13px;
+    background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.06);
+}
+
+.tw-lesson strong{
+    color:#00ffd0;
+}
+
+.tw-intel-tools{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+    margin-top:18px;
+}
+
+.tw-intel-tool{
+    padding:18px;
+    border-radius:17px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.025);
+    cursor:pointer;
+    transition:.2s;
+}
+
+.tw-intel-tool:hover{
+    border-color:rgba(0,255,208,.35);
+    transform:translateY(-2px);
+}
+
+.tw-intel-tool b{
+    display:block;
+    margin-bottom:7px;
+    color:#00ffd0;
+}
+
+.tw-intel-output{
+    margin-top:16px;
+    padding:18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.07);
+    background:rgba(0,0,0,.18);
+    color:#aab7c8;
+    line-height:1.7;
+    min-height:70px;
+}
+
+@media(max-width:800px){
+
+    #tw-live-market-upgrade{
+        margin:45px auto;
+        padding:10px;
+    }
+
+    .tw-live-card{
+        padding:17px;
+        border-radius:21px;
+    }
+
+    .tw-live-title{
+        font-size:27px;
+    }
+
+    .tw-chart-wrap{
+        height:470px;
+        min-height:390px;
+    }
+
+    .tw-scanner-grid{
+        grid-template-columns:1fr;
+    }
+
+    .tw-intel-tools{
+        grid-template-columns:1fr;
+    }
+
+}
+
+</style>
+
+<section id="tw-live-market-upgrade">
+
+    <!-- REAL TRADINGVIEW TERMINAL -->
+
+    <div class="tw-live-card" id="tw-real-chart">
+
+        <div class="tw-live-head">
+
+            <div>
+                <div class="tw-live-kicker">REAL MARKET DATA</div>
+
+                <div class="tw-live-title">
+                    TradingView Market Terminal
+                </div>
+
+                <div class="tw-live-muted">
+                    Interactive market charts with live TradingView data,
+                    technical indicators, drawing tools and symbol switching.
+                </div>
+            </div>
+
+            <div id="twChartStatus"
+                 style="color:#00ffd0;font-size:11px;font-weight:900;">
+                ● CONNECTING
+            </div>
+
+        </div>
+
+        <div class="tw-live-controls">
+
+            <button class="tw-market-btn active"
+                    data-tv-symbol="OANDA:XAUUSD">
+                XAU/USD
+            </button>
+
+            <button class="tw-market-btn"
+                    data-tv-symbol="FX:EURUSD">
+                EUR/USD
+            </button>
+
+            <button class="tw-market-btn"
+                    data-tv-symbol="FX:GBPUSD">
+                GBP/USD
+            </button>
+
+            <button class="tw-market-btn"
+                    data-tv-symbol="FX:USDJPY">
+                USD/JPY
+            </button>
+
+            <button class="tw-market-btn"
+                    data-tv-symbol="NASDAQ:NDX">
+                NASDAQ
+            </button>
+
+            <button class="tw-market-btn"
+                    data-tv-symbol="COINBASE:BTCUSD">
+                BTC/USD
+            </button>
+
+        </div>
+
+        <div class="tw-chart-wrap">
+
+            <div id="twTradingViewChart"></div>
+
+        </div>
+
+        <div class="tw-live-muted" style="margin-top:12px;">
+            Chart supplied by TradingView. Market availability,
+            exchange coverage and real-time status depend on the selected
+            TradingView symbol/data source.
+        </div>
+
+    </div>
+
+
+    <!-- LIVE SCANNER -->
+
+    <div class="tw-live-card" id="scanner">
+
+        <div class="tw-live-head">
+
+            <div>
+                <div class="tw-live-kicker">TW TRADES ENGINE</div>
+
+                <div class="tw-live-title">
+                    Live Market Scanner
+                </div>
+
+                <div class="tw-live-muted">
+                    The scanner requests analysis from the existing TW Trades
+                    market engine. It does not manufacture signals when data
+                    is unavailable.
+                </div>
+            </div>
+
+            <div id="twScannerStatus"
+                 style="color:#00ffd0;font-size:11px;font-weight:900;">
+                READY
+            </div>
+
+        </div>
+
+        <div class="tw-scanner-actions">
+
+            <button class="tw-live-action"
+                    id="twRunScanner">
+                RUN LIVE SCAN
+            </button>
+
+            <button class="tw-live-action secondary"
+                    id="twClearScanner">
+                CLEAR
+            </button>
+
+        </div>
+
+        <div id="twScannerGrid"
+             class="tw-scanner-grid">
+
+            <div class="tw-live-muted">
+                Press RUN LIVE SCAN to request current market analysis.
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- INTELLIGENCE TOOLS -->
+
+    <div class="tw-live-card" id="tw-intelligence-tools">
+
+        <div class="tw-live-kicker">
+            MARKET INTELLIGENCE
+        </div>
+
+        <div class="tw-live-title">
+            Intelligence Workspace
+        </div>
+
+        <div class="tw-live-muted">
+            Use the live scanner, current financial news and the existing
+            TW AI analysis endpoint as separate evidence layers.
+        </div>
+
+        <div class="tw-intel-tools">
+
+            <div class="tw-intel-tool" data-intel="scanner">
+                <b>◉ Market Scanner</b>
+                Scan the configured TW Trades instruments.
+            </div>
+
+            <div class="tw-intel-tool" data-intel="news">
+                <b>◆ Financial News</b>
+                Load current news for the selected instrument.
+            </div>
+
+            <div class="tw-intel-tool" data-intel="ai">
+                <b>✦ AI Analysis</b>
+                Send the current market evidence to the existing AI endpoint.
+            </div>
+
+            <div class="tw-intel-tool" data-intel="structure">
+                <b>◈ TW Blueprint</b>
+                Review indication, correction and continuation.
+            </div>
+
+            <div class="tw-intel-tool" data-intel="risk">
+                <b>△ Risk Framework</b>
+                Review risk-management principles before execution.
+            </div>
+
+            <div class="tw-intel-tool" data-intel="academy">
+                <b>◎ Academy</b>
+                Open the structured learning modules.
+            </div>
+
+        </div>
+
+        <div id="twIntelOutput" class="tw-intel-output">
+            Select an intelligence tool.
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- ACADEMY LESSON MODAL -->
+
+<div id="twAcademyModal" class="tw-academy-modal">
+
+    <div class="tw-academy-panel">
+
+        <div style="display:flex;justify-content:space-between;gap:15px;align-items:start;">
+
+            <div>
+
+                <div class="tw-live-kicker">
+                    THE AUTONOMY OF SUCCESS
+                </div>
+
+                <h2 id="twAcademyTitle">
+                    Academy Lesson
+                </h2>
+
+            </div>
+
+            <button id="twAcademyClose"
+                    class="tw-live-action secondary"
+                    type="button">
+                CLOSE
+            </button>
+
+        </div>
+
+        <div id="twAcademyDescription"
+             class="tw-live-muted">
+        </div>
+
+        <div id="twAcademyLessons"
+             style="margin-top:20px;">
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+(function(){
+
+    /* ========================================================
+       TRADINGVIEW
+    ======================================================== */
+
+    const tvMap = {
+        "OANDA:XAUUSD":"XAU/USD",
+        "FX:EURUSD":"EUR/USD",
+        "FX:GBPUSD":"GBP/USD",
+        "FX:USDJPY":"USD/JPY",
+        "NASDAQ:NDX":"NASDAQ",
+        "COINBASE:BTCUSD":"BTC/USD"
+    };
+
+    window.twLoadTradingView = function(symbol){
+
+        const container =
+            document.getElementById("twTradingViewChart");
+
+        const status =
+            document.getElementById("twChartStatus");
+
+        if(!container) return;
+
+        container.innerHTML = "";
+
+        if(status){
+            status.textContent = "● LOADING";
+        }
+
+        const widget =
+            document.createElement("div");
+
+        widget.className =
+            "tradingview-widget-container";
+
+        widget.style =
+            "height:100%;width:100%;";
+
+        const inner =
+            document.createElement("div");
+
+        inner.className =
+            "tradingview-widget-container__widget";
+
+        inner.style =
+            "height:calc(100% - 32px);width:100%;";
+
+        widget.appendChild(inner);
+
+        const copyright =
+            document.createElement("div");
+
+        copyright.style =
+            "font-size:10px;text-align:right;padding:3px;color:#566274;";
+
+        copyright.innerHTML =
+            'Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener nofollow" style="color:#718096;">TradingView</a>';
+
+        widget.appendChild(copyright);
+
+        const script =
+            document.createElement("script");
+
+        script.type =
+            "text/javascript";
+
+        script.src =
+            "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+
+        script.async = true;
+
+        script.innerHTML =
+            JSON.stringify({
+                autosize:true,
+                symbol:symbol,
+                interval:"15",
+                timezone:"exchange",
+                theme:"dark",
+                style:"1",
+                locale:"en",
+                enable_publishing:false,
+                allow_symbol_change:true,
+                hide_top_toolbar:false,
+                hide_side_toolbar:false,
+                hide_legend:false,
+                hide_volume:false,
+                withdateranges:true,
+                save_image:false,
+                calendar:false,
+                hotlist:false,
+                details:false,
+                studies:[
+                    "Volume@tv-basicstudies",
+                    "MASimple@tv-basicstudies"
+                ],
+                support_host:"https://www.tradingview.com"
+            });
+
+        widget.appendChild(script);
+
+        container.appendChild(widget);
+
+        if(status){
+            status.textContent =
+                "● LIVE • " +
+                (tvMap[symbol] || symbol);
+        }
+    };
+
+
+    document
+        .querySelectorAll("[data-tv-symbol]")
+        .forEach(function(button){
+
+            button.addEventListener("click",function(){
+
+                document
+                    .querySelectorAll("[data-tv-symbol]")
+                    .forEach(function(b){
+                        b.classList.remove("active");
+                    });
+
+                button.classList.add("active");
+
+                window.twLoadTradingView(
+                    button.getAttribute("data-tv-symbol")
+                );
+
+            });
+
+        });
+
+
+    /* ========================================================
+       LIVE SCANNER
+    ======================================================== */
+
+    const scannerAssets = [
+        "XAU/USD",
+        "EUR/USD",
+        "GBP/USD",
+        "USD/JPY",
+        "NASDAQ",
+        "BTC/USD"
+    ];
+
+    const scannerGrid =
+        document.getElementById("twScannerGrid");
+
+    const scannerStatus =
+        document.getElementById("twScannerStatus");
+
+
+    function esc(value){
+
+        return String(
+            value === undefined ||
+            value === null ||
+            value === ""
+                ? "—"
+                : value
+        )
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#039;");
+
+    }
+
+
+    function biasClass(value){
+
+        const v =
+            String(value || "NEUTRAL")
+            .toUpperCase();
+
+        if(v.includes("BUY") || v.includes("BULL")){
+            return "#00ffd0";
+        }
+
+        if(v.includes("SELL") || v.includes("BEAR")){
+            return "#ff6685";
+        }
+
+        return "#b9c5d5";
+
+    }
+
+
+    function scannerCard(symbol,data){
+
+        if(!data || data.error){
+
+            return `
+            <div class="tw-scan-row">
+
+                <div class="tw-scan-top">
+                    <div class="tw-scan-symbol">
+                        ${esc(symbol)}
+                    </div>
+
+                    <div class="tw-scan-status">
+                        DATA UNAVAILABLE
+                    </div>
+                </div>
+
+                <div class="tw-live-muted">
+                    ${esc(data && data.error
+                        ? data.error
+                        : "No live response returned.")}
+                </div>
+
+            </div>`;
+        }
+
+
+        const bias =
+            data.bias ||
+            data.signal ||
+            "NEUTRAL";
+
+
+        return `
+        <div class="tw-scan-row"
+             data-scan-symbol="${esc(symbol)}">
+
+            <div class="tw-scan-top">
+
+                <div class="tw-scan-symbol">
+                    ${esc(symbol)}
+                </div>
+
+                <div class="tw-scan-status">
+                    LIVE RESPONSE
+                </div>
+
+            </div>
+
+            <div class="tw-scan-bias"
+                 style="color:${biasClass(bias)}">
+                ${esc(bias)}
+            </div>
+
+            <div class="tw-scan-meta">
+
+                <div>
+                    <span>SUPPORT</span>
+                    <strong>${esc(data.support)}</strong>
+                </div>
+
+                <div>
+                    <span>RESISTANCE</span>
+                    <strong>${esc(data.resistance)}</strong>
+                </div>
+
+                <div>
+                    <span>INDICATION</span>
+                    <strong>${esc(data.indication)}</strong>
+                </div>
+
+                <div>
+                    <span>CORRECTION</span>
+                    <strong>${esc(data.correction)}</strong>
+                </div>
+
+                <div>
+                    <span>CONTINUATION</span>
+                    <strong>${esc(data.continuation)}</strong>
+                </div>
+
+                <div>
+                    <span>TECHNICAL</span>
+                    <strong>${esc(data.technical)}</strong>
+                </div>
+
+                <div>
+                    <span>FUNDAMENTAL</span>
+                    <strong>${esc(data.fundamental)}</strong>
+                </div>
+
+                <div>
+                    <span>SENTIMENT</span>
+                    <strong>${esc(data.sentiment)}</strong>
+                </div>
+
+            </div>
+
+        </div>`;
+    }
+
+
+    async function scanOne(symbol){
+
+        try{
+
+            const response =
+                await fetch(
+                    "/api/scan?symbol=" +
+                    encodeURIComponent(symbol) +
+                    "&_=" +
+                    Date.now(),
+                    {
+                        cache:"no-store"
+                    }
+                );
+
+            if(!response.ok){
+                throw new Error(
+                    "HTTP " + response.status
+                );
+            }
+
+            const data =
+                await response.json();
+
+            return {
+                symbol:symbol,
+                data:data
+            };
+
+        }catch(error){
+
+            return {
+                symbol:symbol,
+                data:{
+                    error:error.message
+                }
+            };
+
+        }
+
+    }
+
+
+    window.twRunLiveScanner =
+        async function(){
+
+            if(!scannerGrid) return;
+
+            if(scannerStatus){
+                scannerStatus.textContent =
+                    "SCANNING...";
+            }
+
+            scannerGrid.innerHTML = "";
+
+            const loading =
+                document.createElement("div");
+
+            loading.className =
+                "tw-live-muted";
+
+            loading.textContent =
+                "Requesting live analysis from the TW Trades engine...";
+
+            scannerGrid.appendChild(loading);
+
+
+            const results = [];
+
+            for(const symbol of scannerAssets){
+
+                const result =
+                    await scanOne(symbol);
+
+                results.push(result);
+
+            }
+
+
+            scannerGrid.innerHTML =
+                results
+                .map(function(item){
+                    return scannerCard(
+                        item.symbol,
+                        item.data
+                    );
+                })
+                .join("");
+
+
+            scannerGrid
+                .querySelectorAll("[data-scan-symbol]")
+                .forEach(function(card){
+
+                    card.addEventListener("click",function(){
+
+                        const symbol =
+                            card.getAttribute(
+                                "data-scan-symbol"
+                            );
+
+                        const chartSymbol =
+                            Object.keys(tvMap)
+                            .find(function(key){
+                                return tvMap[key] === symbol;
+                            });
+
+                        if(chartSymbol){
+                            window.twLoadTradingView(
+                                chartSymbol
+                            );
+
+                            document
+                                .getElementById("tw-real-chart")
+                                ?.scrollIntoView({
+                                    behavior:"smooth",
+                                    block:"start"
+                                });
+                        }
+
+                    });
+
+                });
+
+
+            if(scannerStatus){
+                scannerStatus.textContent =
+                    "● LIVE • " +
+                    new Date().toLocaleTimeString();
+            }
+
+        };
+
+
+    document
+        .getElementById("twRunScanner")
+        ?.addEventListener(
+            "click",
+            window.twRunLiveScanner
+        );
+
+
+    document
+        .getElementById("twClearScanner")
+        ?.addEventListener(
+            "click",
+            function(){
+
+                scannerGrid.innerHTML =
+                    '<div class="tw-live-muted">Scanner cleared. Press RUN LIVE SCAN to request new market data.</div>';
+
+                if(scannerStatus){
+                    scannerStatus.textContent =
+                        "READY";
+                }
+
+            }
+        );
+
+
+    /* ========================================================
+       ACADEMY — MAKE EXISTING COURSES CLICKABLE
+    ======================================================== */
+
+    const academyModal =
+        document.getElementById(
+            "twAcademyModal"
+        );
+
+    const academyTitle =
+        document.getElementById(
+            "twAcademyTitle"
+        );
+
+    const academyDescription =
+        document.getElementById(
+            "twAcademyDescription"
+        );
+
+    const academyLessons =
+        document.getElementById(
+            "twAcademyLessons"
+        );
+
+
+    function openAcademyCard(card){
+
+        if(!card) return;
+
+        const titleNode =
+            card.querySelector("h3");
+
+        const descNode =
+            card.querySelector(".muted");
+
+        const lessons =
+            Array.from(
+                card.querySelectorAll(".lesson")
+            )
+            .map(function(node){
+                return node.textContent.trim();
+            });
+
+
+        if(academyTitle){
+            academyTitle.textContent =
+                titleNode
+                    ? titleNode.textContent.trim()
+                    : "Academy Lesson";
+        }
+
+
+        if(academyDescription){
+            academyDescription.textContent =
+                descNode
+                    ? descNode.textContent.trim()
+                    : "TW Trades educational module.";
+        }
+
+
+        if(academyLessons){
+
+            if(lessons.length){
+
+                academyLessons.innerHTML =
+                    lessons.map(function(lesson,index){
+
+                        return `
+                        <div class="tw-lesson">
+                            <strong>
+                                Lesson ${index + 1}
+                            </strong>
+                            <div style="margin-top:5px;">
+                                ${esc(lesson.replace(
+                                    /^\\d+\\.\\s*/,
+                                    ""
+                                ))}
+                            </div>
+                        </div>`;
+
+                    }).join("");
+
+            }else{
+
+                academyLessons.innerHTML =
+                    `<div class="tw-live-muted">
+                        Course content will be expanded inside this module.
+                    </div>`;
+
+            }
+
+        }
+
+
+        if(academyModal){
+            academyModal.classList.add("open");
+        }
+
+    }
+
+
+    document
+        .querySelectorAll(
+            "#academy .card.course"
+        )
+        .forEach(function(card){
+
+            card.setAttribute(
+                "role",
+                "button"
+            );
+
+            card.setAttribute(
+                "tabindex",
+                "0"
+            );
+
+            card.addEventListener(
+                "click",
+                function(){
+                    openAcademyCard(card);
+                }
+            );
+
+            card.addEventListener(
+                "keydown",
+                function(event){
+
+                    if(
+                        event.key === "Enter" ||
+                        event.key === " "
+                    ){
+
+                        event.preventDefault();
+
+                        openAcademyCard(card);
+
+                    }
+
+                }
+            );
+
+        });
+
+
+    document
+        .getElementById("twAcademyClose")
+        ?.addEventListener(
+            "click",
+            function(){
+
+                academyModal
+                    ?.classList.remove("open");
+
+            }
+        );
+
+
+    academyModal
+        ?.addEventListener(
+            "click",
+            function(event){
+
+                if(event.target === academyModal){
+
+                    academyModal.classList.remove(
+                        "open"
+                    );
+
+                }
+
+            }
+        );
+
+
+    /* ========================================================
+       INTELLIGENCE WORKSPACE
+    ======================================================== */
+
+    const intelOutput =
+        document.getElementById(
+            "twIntelOutput"
+        );
+
+
+    document
+        .querySelectorAll(
+            "[data-intel]"
+        )
+        .forEach(function(tool){
+
+            tool.addEventListener(
+                "click",
+                async function(){
+
+                    const type =
+                        tool.getAttribute(
+                            "data-intel"
+                        );
+
+                    if(!intelOutput) return;
+
+
+                    if(type === "scanner"){
+
+                        intelOutput.innerHTML =
+                            "Running the live scanner...";
+
+                        document
+                            .getElementById(
+                                "scanner"
+                            )
+                            ?.scrollIntoView({
+                                behavior:"smooth"
+                            });
+
+                        await window.twRunLiveScanner();
+
+                        return;
+                    }
+
+
+                    if(type === "news"){
+
+                        intelOutput.innerHTML =
+                            "Loading current financial news...";
+
+                        try{
+
+                            const response =
+                                await fetch(
+                                    "/api/news?symbol=XAU/USD&_=" +
+                                    Date.now(),
+                                    {
+                                        cache:"no-store"
+                                    }
+                                );
+
+                            const data =
+                                await response.json();
+
+                            if(data.error){
+
+                                intelOutput.textContent =
+                                    data.error;
+
+                                return;
+                            }
+
+                            let items =
+                                data.data ||
+                                data.articles ||
+                                data.news ||
+                                [];
+
+                            if(!Array.isArray(items)){
+                                items = [];
+                            }
+
+                            if(!items.length){
+
+                                intelOutput.textContent =
+                                    "No current news items were returned by the configured news engine.";
+
+                                return;
+                            }
+
+                            intelOutput.innerHTML =
+                                items
+                                .slice(0,6)
+                                .map(function(item){
+
+                                    const title =
+                                        item.title ||
+                                        item.headline ||
+                                        "Untitled";
+
+                                    const source =
+                                        item.source ||
+                                        item.source_name ||
+                                        "";
+
+                                    return `
+                                    <div style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07);">
+                                        <strong>
+                                            ${esc(title)}
+                                        </strong>
+
+                                        <div style="font-size:11px;color:#718096;margin-top:5px;">
+                                            ${esc(source)}
+                                        </div>
+                                    </div>`;
+
+                                })
+                                .join("");
+
+                        }catch(error){
+
+                            intelOutput.textContent =
+                                "News request failed: " +
+                                error.message;
+
+                        }
+
+                        return;
+                    }
+
+
+                    if(type === "ai"){
+
+                        intelOutput.innerHTML =
+                            "Opening the TW Intelligence Analyst...";
+
+                        document
+                            .getElementById(
+                                "ai-intelligence"
+                            )
+                            ?.scrollIntoView({
+                                behavior:"smooth"
+                            });
+
+                        setTimeout(function(){
+
+                            if(
+                                typeof window.runAI ===
+                                "function"
+                            ){
+                                window.runAI();
+                            }
+
+                        },500);
+
+                        return;
+                    }
+
+
+                    if(type === "structure"){
+
+                        intelOutput.innerHTML = `
+                        <strong style="color:#00ffd0;">
+                            TW BLUEPRINT — ICC
+                        </strong>
+
+                        <p>
+                            <b>Indication:</b>
+                            identify the structural break or directional
+                            indication.
+                        </p>
+
+                        <p>
+                            <b>Correction:</b>
+                            wait for the market to retrace or correct
+                            rather than treating the initial move as
+                            automatic confirmation.
+                        </p>
+
+                        <p>
+                            <b>Continuation:</b>
+                            evaluate whether price resumes the indicated
+                            direction with supporting structure.
+                        </p>
+
+                        <p>
+                            This educational framework does not guarantee
+                            a trading outcome.
+                        </p>`;
+
+                        return;
+                    }
+
+
+                    if(type === "risk"){
+
+                        intelOutput.innerHTML = `
+                        <strong style="color:#00ffd0;">
+                            RISK FRAMEWORK
+                        </strong>
+
+                        <p>
+                            Define the invalidation level before entering.
+                        </p>
+
+                        <p>
+                            Determine position size from the amount you
+                            are prepared to risk rather than from the
+                            desired profit.
+                        </p>
+
+                        <p>
+                            Avoid increasing exposure simply because a
+                            position is moving against you.
+                        </p>
+
+                        <p>
+                            Trading involves substantial risk and the
+                            scanner is not financial advice.
+                        </p>`;
+
+                        return;
+                    }
+
+
+                    if(type === "academy"){
+
+                        document
+                            .getElementById(
+                                "academy"
+                            )
+                            ?.scrollIntoView({
+                                behavior:"smooth"
+                            });
+
+                        return;
+                    }
+
+                }
+            );
+
+        });
+
+
+    /* ========================================================
+       INITIAL CHART
+    ======================================================== */
+
+    if(
+        document.getElementById(
+            "twTradingViewChart"
+        )
+    ){
+
+        window.twLoadTradingView(
+            "OANDA:XAUUSD"
+        );
+
+    }
+
+})();
+</script>
+
 
 </body>
 </html>
