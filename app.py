@@ -2714,6 +2714,35 @@ font-size:17px;
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TW Trades">
 
+
+<style>
+
+.tw-chart-time{
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.025);
+    color:#aab7c8;
+    padding:9px 13px;
+    border-radius:10px;
+    font-weight:800;
+    cursor:pointer;
+}
+
+.tw-chart-time:hover{
+    border-color:rgba(0,255,208,.35);
+    color:#00ffd0;
+}
+
+@media(max-width:700px){
+
+    #twTradingViewChart{
+        height:470px !important;
+        min-height:470px !important;
+    }
+
+}
+
+</style>
+
 </head>
 
 <body>
@@ -3726,6 +3755,843 @@ Educational material only. Trading involves risk. No content guarantees trading 
 
 
 <!-- TW INTELLIGENCE TERMINAL -->
+
+<!-- =========================================================
+     TW TRADES REAL TRADINGVIEW TERMINAL
+========================================================= -->
+
+<section id="twRealTradingView"
+         style="padding:28px 0;">
+
+    <div class="tw-live-card">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:15px;
+            flex-wrap:wrap;
+        ">
+
+            <div>
+                <div class="tw-live-kicker">
+                    TW TRADES • LIVE MARKET TERMINAL
+                </div>
+
+                <h2 style="margin:5px 0 5px;">
+                    TradingView Market Chart
+                </h2>
+
+                <p style="
+                    color:#8997aa;
+                    margin:0;
+                    line-height:1.6;
+                ">
+                    Interactive real-market chart connected to TradingView.
+                    Use it with the TW Trades scanner and Blueprint analysis.
+                </p>
+            </div>
+
+            <div style="
+                display:flex;
+                gap:8px;
+                flex-wrap:wrap;
+            ">
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('XAUUSD')">
+                    GOLD
+                </button>
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('EURUSD')">
+                    EUR/USD
+                </button>
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('GBPUSD')">
+                    GBP/USD
+                </button>
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('USDJPY')">
+                    USD/JPY
+                </button>
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('NASDAQ')">
+                    NASDAQ
+                </button>
+
+                <button
+                    class="tw-live-action"
+                    type="button"
+                    onclick="twTradingViewSymbol('BTCUSD')">
+                    BTC/USD
+                </button>
+
+            </div>
+
+        </div>
+
+        <div style="
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+            margin:20px 0 14px;
+        ">
+
+            <button
+                type="button"
+                class="tw-chart-time"
+                onclick="twChartInterval('5')">
+                5M
+            </button>
+
+            <button
+                type="button"
+                class="tw-chart-time"
+                onclick="twChartInterval('15')">
+                15M
+            </button>
+
+            <button
+                type="button"
+                class="tw-chart-time"
+                onclick="twChartInterval('60')">
+                1H
+            </button>
+
+            <button
+                type="button"
+                class="tw-chart-time"
+                onclick="twChartInterval('240')">
+                4H
+            </button>
+
+            <button
+                type="button"
+                class="tw-chart-time"
+                onclick="twChartInterval('D')">
+                1D
+            </button>
+
+        </div>
+
+        <div id="twTradingViewChart"
+             style="
+                width:100%;
+                height:620px;
+                min-height:450px;
+                border-radius:18px;
+                overflow:hidden;
+                background:#05080d;
+                border:1px solid rgba(255,255,255,.07);
+             ">
+
+            <div style="
+                height:100%;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                color:#7f8da1;
+            ">
+                Loading TradingView...
+            </div>
+
+        </div>
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
+            margin-top:12px;
+            color:#7f8da1;
+            font-size:12px;
+        ">
+
+            <span>
+                CHART:
+                <strong id="twChartSymbol"
+                      style="color:#00ffd0;">
+                    XAUUSD
+                </strong>
+            </span>
+
+            <span>
+                TIMEFRAME:
+                <strong id="twChartInterval"
+                      style="color:#00ffd0;">
+                    5M
+                </strong>
+            </span>
+
+            <span>
+                SOURCE:
+                <strong style="color:#00ffd0;">
+                    TRADINGVIEW
+                </strong>
+            </span>
+
+        </div>
+
+    </div>
+
+</section>
+
+<script>
+
+(function(){
+
+    let twTVSymbol = "XAUUSD";
+    let twTVInterval = "5";
+
+    window.twTradingViewSymbol = function(symbol){
+
+        twTVSymbol = symbol;
+
+        const label =
+            document.getElementById("twChartSymbol");
+
+        if(label){
+            label.textContent = symbol;
+        }
+
+        renderTradingView();
+
+        if(window.twSelectAsset){
+
+            const map = {
+                "XAUUSD":"XAU/USD",
+                "EURUSD":"EUR/USD",
+                "GBPUSD":"GBP/USD",
+                "USDJPY":"USD/JPY",
+                "NASDAQ":"NASDAQ",
+                "BTCUSD":"BTC/USD"
+            };
+
+            if(map[symbol]){
+                window.twSelectAsset(map[symbol]);
+            }
+
+        }
+
+    };
+
+    window.twChartInterval = function(interval){
+
+        twTVInterval = interval;
+
+        const names = {
+            "5":"5M",
+            "15":"15M",
+            "60":"1H",
+            "240":"4H",
+            "D":"1D"
+        };
+
+        const label =
+            document.getElementById("twChartInterval");
+
+        if(label){
+            label.textContent =
+                names[interval] || interval;
+        }
+
+        renderTradingView();
+
+    };
+
+    function renderTradingView(){
+
+        const container =
+            document.getElementById(
+                "twTradingViewChart"
+            );
+
+        if(!container) return;
+
+        container.innerHTML = "";
+
+        const wrapper =
+            document.createElement("div");
+
+        wrapper.className =
+            "tradingview-widget-container";
+
+        wrapper.style.width = "100%";
+        wrapper.style.height = "100%";
+
+        const chart =
+            document.createElement("div");
+
+        chart.className =
+            "tradingview-widget-container__widget";
+
+        chart.style.width = "100%";
+        chart.style.height = "100%";
+
+        wrapper.appendChild(chart);
+        container.appendChild(wrapper);
+
+        const script =
+            document.createElement("script");
+
+        script.src =
+            "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+
+        script.type = "text/javascript";
+        script.async = true;
+
+        const config = {
+
+            autosize: true,
+
+            symbol:
+                "OANDA:" + twTVSymbol,
+
+            interval:
+                twTVInterval,
+
+            timezone:
+                "Africa/Johannesburg",
+
+            theme:
+                "dark",
+
+            style:
+                "1",
+
+            locale:
+                "en",
+
+            enable_publishing:
+                false,
+
+            allow_symbol_change:
+                true,
+
+            calendar:
+                false,
+
+            support_host:
+                "https://www.tradingview.com"
+
+        };
+
+        script.textContent =
+            JSON.stringify(config);
+
+        wrapper.appendChild(script);
+
+    }
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        function(){
+
+            renderTradingView();
+
+        }
+    );
+
+})();
+
+</script>
+
+
+
+<!-- =========================================================
+     TW TRADES LIVE SCANNER DETAILS
+========================================================= -->
+
+<section id="twScannerDetails"
+         style="padding:20px 0;">
+
+    <div class="tw-live-card">
+
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            gap:15px;
+            align-items:center;
+            flex-wrap:wrap;
+        ">
+
+            <div>
+
+                <div class="tw-live-kicker">
+                    TW TRADES • LIVE SCANNER
+                </div>
+
+                <h2 style="margin:5px 0;">
+                    Market Intelligence Scanner
+                </h2>
+
+                <p id="twScannerDescription"
+                   style="
+                    color:#8997aa;
+                    line-height:1.6;
+                    margin:0;
+                   ">
+                    Select an instrument to analyse the current
+                    live market response.
+                </p>
+
+            </div>
+
+            <button
+                type="button"
+                class="tw-live-action"
+                onclick="twRunDetailedScanner()">
+                RUN SCAN
+            </button>
+
+        </div>
+
+
+        <div style="
+            display:grid;
+            grid-template-columns:
+                repeat(auto-fit,minmax(145px,1fr));
+            gap:12px;
+            margin-top:22px;
+        ">
+
+            <div class="tw-live-card"
+                 style="padding:17px;">
+
+                <small>BIAS</small>
+
+                <div id="twScanBias"
+                     style="
+                        margin-top:8px;
+                        font-size:21px;
+                        font-weight:900;
+                        color:#00ffd0;
+                     ">
+                    SCANNING
+                </div>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:17px;">
+
+                <small>SUPPORT</small>
+
+                <div id="twScanSupport"
+                     style="
+                        margin-top:8px;
+                        font-size:18px;
+                        font-weight:800;
+                     ">
+                    —
+                </div>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:17px;">
+
+                <small>RESISTANCE</small>
+
+                <div id="twScanResistance"
+                     style="
+                        margin-top:8px;
+                        font-size:18px;
+                        font-weight:800;
+                     ">
+                    —
+                </div>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:17px;">
+
+                <small>ENGINE</small>
+
+                <div id="twScanEngine"
+                     style="
+                        margin-top:8px;
+                        font-size:15px;
+                        font-weight:800;
+                        color:#00ffd0;
+                     ">
+                    READY
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div style="
+            display:grid;
+            grid-template-columns:
+                repeat(auto-fit,minmax(200px,1fr));
+            gap:12px;
+            margin-top:15px;
+        ">
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    INDICATION
+                </strong>
+
+                <p id="twScanIndication"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    —
+                </p>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    CORRECTION
+                </strong>
+
+                <p id="twScanCorrection"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    —
+                </p>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    CONTINUATION
+                </strong>
+
+                <p id="twScanContinuation"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    —
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div style="
+            margin-top:15px;
+            display:grid;
+            grid-template-columns:
+                repeat(auto-fit,minmax(200px,1fr));
+            gap:12px;
+        ">
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    TECHNICAL
+                </strong>
+
+                <p id="twScanTechnical"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    Waiting for live response.
+                </p>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    FUNDAMENTAL
+                </strong>
+
+                <p id="twScanFundamental"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    Waiting for live response.
+                </p>
+
+            </div>
+
+
+            <div class="tw-live-card"
+                 style="padding:18px;">
+
+                <strong>
+                    SENTIMENT
+                </strong>
+
+                <p id="twScanSentiment"
+                   style="
+                    color:#aab7c8;
+                    line-height:1.65;
+                   ">
+                    Waiting for live response.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div id="twScannerError"
+             style="
+                display:none;
+                margin-top:15px;
+                padding:15px;
+                border-radius:12px;
+                border:1px solid rgba(255,90,90,.25);
+                background:rgba(255,90,90,.05);
+                color:#ff8c8c;
+             ">
+        </div>
+
+    </div>
+
+</section>
+
+
+<script>
+
+(function(){
+
+    window.twRunDetailedScanner =
+        async function(){
+
+        const asset =
+            window.twCurrentAsset ||
+            (
+                document.getElementById(
+                    "tw-terminal-symbol"
+                ) || {}
+            ).textContent ||
+            "XAU/USD";
+
+        const bias =
+            document.getElementById(
+                "twScanBias"
+            );
+
+        const engine =
+            document.getElementById(
+                "twScanEngine"
+            );
+
+        const errorBox =
+            document.getElementById(
+                "twScannerError"
+            );
+
+        if(errorBox){
+            errorBox.style.display = "none";
+            errorBox.textContent = "";
+        }
+
+        if(bias){
+            bias.textContent = "SCANNING";
+        }
+
+        if(engine){
+            engine.textContent = "SCANNING";
+        }
+
+        try{
+
+            const response =
+                await fetch(
+                    "/api/scan?symbol=" +
+                    encodeURIComponent(asset),
+                    {
+                        cache:"no-store"
+                    }
+                );
+
+            if(!response.ok){
+                throw new Error(
+                    "Scanner HTTP " +
+                    response.status
+                );
+            }
+
+            const data =
+                await response.json();
+
+            if(data.error){
+                throw new Error(data.error);
+            }
+
+            const value =
+                function(key,fallback){
+
+                    if(
+                        data[key] !== undefined &&
+                        data[key] !== null &&
+                        String(data[key]).trim() !== ""
+                    ){
+                        return String(data[key]);
+                    }
+
+                    return fallback;
+
+                };
+
+            const set =
+                function(id,text){
+
+                    const el =
+                        document.getElementById(id);
+
+                    if(el){
+                        el.textContent = text;
+                    }
+
+                };
+
+            set(
+                "twScanBias",
+                value(
+                    "bias",
+                    value("signal","NEUTRAL")
+                ).toUpperCase()
+            );
+
+            set(
+                "twScanSupport",
+                value("support","—")
+            );
+
+            set(
+                "twScanResistance",
+                value("resistance","—")
+            );
+
+            set(
+                "twScanIndication",
+                value(
+                    "indication",
+                    "No indication returned."
+                )
+            );
+
+            set(
+                "twScanCorrection",
+                value(
+                    "correction",
+                    "No correction returned."
+                )
+            );
+
+            set(
+                "twScanContinuation",
+                value(
+                    "continuation",
+                    "No continuation returned."
+                )
+            );
+
+            set(
+                "twScanTechnical",
+                value(
+                    "technical",
+                    "No technical detail returned."
+                )
+            );
+
+            set(
+                "twScanFundamental",
+                value(
+                    "fundamental",
+                    "No fundamental detail returned."
+                )
+            );
+
+            set(
+                "twScanSentiment",
+                value(
+                    "sentiment",
+                    "No sentiment detail returned."
+                )
+            );
+
+            set(
+                "twScanEngine",
+                "LIVE"
+            );
+
+            const description =
+                document.getElementById(
+                    "twScannerDescription"
+                );
+
+            if(description){
+                description.textContent =
+                    "Live scanner response for " +
+                    asset +
+                    ". Results come from the TW Trades market engine.";
+            }
+
+        }catch(error){
+
+            if(engine){
+                engine.textContent =
+                    "ERROR";
+            }
+
+            if(errorBox){
+
+                errorBox.style.display =
+                    "block";
+
+                errorBox.textContent =
+                    "Live scanner error: " +
+                    error.message;
+
+            }
+
+        }
+
+    };
+
+})();
+
+</script>
+
+
 <section id="intelligence-terminal" style="margin:70px auto;max-width:1200px;padding:28px 18px;border:1px solid rgba(0,255,208,.14);border-radius:28px;background:linear-gradient(145deg,#07101b,#03070d);box-shadow:0 20px 70px rgba(0,0,0,.35);">
 
 <div style="display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:22px;">
@@ -3845,10 +4711,10 @@ Analytical information only. Market conditions can change rapidly. This terminal
 
 <script>
 (function(){
-let twCurrentAsset="XAU/USD";
+window.twCurrentAsset="XAU/USD";
 
 window.twSelectAsset=function(asset){
-twCurrentAsset=asset;
+window.twCurrentAsset=asset;
 const symbol=document.getElementById("tw-terminal-symbol");
 if(symbol) symbol.textContent=asset;
 
@@ -3879,7 +4745,7 @@ const msg=document.getElementById("tw-engine-message");
 if(status) status.textContent="SCANNING...";
 
 try{
-const response=await fetch("/api/scan?symbol="+encodeURIComponent(twCurrentAsset),{cache:"no-store"});
+const response=await fetch("/api/scan?symbol="+encodeURIComponent(window.twCurrentAsset),{cache:"no-store"});
 const data=await response.json();
 
 if(data && data.error){
@@ -5131,7 +5997,7 @@ TikTok · @snowFx3
 
                         const cleanLesson =
                             lesson.replace(
-                                /^\d+\.\s*/,
+                                /^\\d+\\.\\s*/,
                                 ""
                             );
 
@@ -5996,6 +6862,30 @@ TikTok · @snowFx3
 
 </body>
 </html>
+
+<script>
+document.addEventListener(
+    "DOMContentLoaded",
+    function(){
+
+        setTimeout(
+            function(){
+
+                if(
+                    typeof window.twRunDetailedScanner ===
+                    "function"
+                ){
+                    window.twRunDetailedScanner();
+                }
+
+            },
+            1200
+        );
+
+    }
+);
+</script>
+
 """
 
 @app.route("/")
@@ -6024,3 +6914,5 @@ if __name__=="__main__":
         port=port,
         debug=False
     )
+
+
