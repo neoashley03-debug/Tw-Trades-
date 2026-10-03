@@ -2984,6 +2984,192 @@ Educational material only. Trading involves risk. No content guarantees trading 
 </section>
 <!-- END TW TRADES LIBRARY -->
 
+
+<!-- TW INTELLIGENCE TERMINAL -->
+<section id="intelligence-terminal" style="margin:70px auto;max-width:1200px;padding:28px 18px;border:1px solid rgba(0,255,208,.14);border-radius:28px;background:linear-gradient(145deg,#07101b,#03070d);box-shadow:0 20px 70px rgba(0,0,0,.35);">
+
+<div style="display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:22px;">
+<div>
+<div style="font-size:12px;letter-spacing:3px;color:#00ffd0;font-weight:800;">TW TRADES INTELLIGENCE</div>
+<h2 style="font-size:38px;margin:8px 0 5px;">Intelligence <span style="color:#00ffd0;">Terminal</span></h2>
+<p style="margin:0;color:#8492a6;font-size:14px;">Live market analysis across technical, fundamental and sentiment layers.</p>
+</div>
+<div style="padding:9px 14px;border:1px solid rgba(0,255,208,.2);border-radius:999px;color:#00ffd0;font-size:12px;font-weight:800;">● LIVE ENGINE</div>
+</div>
+
+<div style="display:flex;gap:10px;overflow-x:auto;padding:5px 0 18px;scrollbar-width:none;">
+<button class="tw-asset-btn" onclick="twSelectAsset('XAU/USD')" style="border:1px solid rgba(0,255,208,.3);background:rgba(0,255,208,.08);color:#00ffd0;padding:11px 18px;border-radius:999px;white-space:nowrap;">XAU/USD</button>
+<button class="tw-asset-btn" onclick="twSelectAsset('EUR/USD')" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#b5c0cf;padding:11px 18px;border-radius:999px;white-space:nowrap;">EUR/USD</button>
+<button class="tw-asset-btn" onclick="twSelectAsset('GBP/USD')" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#b5c0cf;padding:11px 18px;border-radius:999px;white-space:nowrap;">GBP/USD</button>
+<button class="tw-asset-btn" onclick="twSelectAsset('USD/JPY')" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#b5c0cf;padding:11px 18px;border-radius:999px;white-space:nowrap;">USD/JPY</button>
+<button class="tw-asset-btn" onclick="twSelectAsset('NASDAQ')" style="border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#b5c0cf;padding:11px 18px;border-radius:999px;white-space:nowrap;">NASDAQ</button>
+</div>
+
+<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:15px;">
+
+<div style="min-height:310px;padding:22px;border:1px solid rgba(255,255,255,.07);border-radius:22px;background:rgba(255,255,255,.025);">
+<div style="display:flex;justify-content:space-between;align-items:center;">
+<div>
+<div id="tw-terminal-symbol" style="font-size:24px;font-weight:900;">XAU/USD</div>
+<div style="color:#738094;font-size:12px;margin-top:4px;">Market terminal</div>
+</div>
+<div id="tw-terminal-status" style="font-size:12px;color:#00ffd0;">CONNECTING...</div>
+</div>
+
+<div style="height:180px;margin-top:22px;border-radius:15px;background:linear-gradient(180deg,rgba(0,255,208,.035),rgba(255,255,255,.01));display:flex;align-items:center;justify-content:center;text-align:center;">
+<div>
+<div style="font-size:38px;">◈</div>
+<div style="color:#718096;font-size:13px;">Live chart data</div>
+<div style="color:#465468;font-size:11px;margin-top:5px;">Connects to the TW market engine</div>
+</div>
+</div>
+</div>
+
+<div style="padding:22px;border:1px solid rgba(255,255,255,.07);border-radius:22px;background:rgba(255,255,255,.025);">
+<div style="font-size:12px;letter-spacing:2px;color:#00ffd0;font-weight:800;">TW BLUEPRINT</div>
+<h3 style="margin:10px 0 20px;">Market Structure</h3>
+
+<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+<span style="color:#7e8b9d;">Indication</span><strong id="tw-indication">Scanning</strong>
+</div>
+<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+<span style="color:#7e8b9d;">Correction</span><strong id="tw-correction">Scanning</strong>
+</div>
+<div style="display:flex;justify-content:space-between;padding:12px 0;">
+<span style="color:#7e8b9d;">Continuation</span><strong id="tw-continuation">Scanning</strong>
+</div>
+</div>
+
+<div style="padding:22px;border:1px solid rgba(255,255,255,.07);border-radius:22px;background:rgba(255,255,255,.025);">
+<div style="font-size:12px;letter-spacing:2px;color:#00ffd0;font-weight:800;">YUKI INTELLIGENCE</div>
+<h3 style="margin:10px 0 20px;">Analysis Layers</h3>
+
+<div style="margin-bottom:14px;">
+<div style="display:flex;justify-content:space-between;font-size:13px;"><span>Technical</span><strong id="tw-tech">Scanning</strong></div>
+<div style="height:5px;background:rgba(255,255,255,.08);border-radius:5px;margin-top:7px;"><div id="tw-tech-bar" style="width:0%;height:100%;border-radius:5px;background:#00ffd0;"></div></div>
+</div>
+
+<div style="margin-bottom:14px;">
+<div style="display:flex;justify-content:space-between;font-size:13px;"><span>Fundamental</span><strong id="tw-fund">Scanning</strong></div>
+<div style="height:5px;background:rgba(255,255,255,.08);border-radius:5px;margin-top:7px;"><div id="tw-fund-bar" style="width:0%;height:100%;border-radius:5px;background:#00ffd0;"></div></div>
+</div>
+
+<div>
+<div style="display:flex;justify-content:space-between;font-size:13px;"><span>Sentiment</span><strong id="tw-sentiment">Scanning</strong></div>
+<div style="height:5px;background:rgba(255,255,255,.08);border-radius:5px;margin-top:7px;"><div id="tw-sentiment-bar" style="width:0%;height:100%;border-radius:5px;background:#00ffd0;"></div></div>
+</div>
+</div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:15px;">
+
+<div style="padding:18px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);">
+<div style="font-size:11px;color:#718096;">MARKET BIAS</div>
+<div id="tw-bias" style="font-size:20px;font-weight:900;margin-top:7px;">SCANNING</div>
+</div>
+
+<div style="padding:18px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);">
+<div style="font-size:11px;color:#718096;">SESSION</div>
+<div id="tw-session" style="font-size:20px;font-weight:900;margin-top:7px;">LIVE</div>
+</div>
+
+<div style="padding:18px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);">
+<div style="font-size:11px;color:#718096;">SUPPORT</div>
+<div id="tw-support" style="font-size:20px;font-weight:900;margin-top:7px;">—</div>
+</div>
+
+<div style="padding:18px;border-radius:18px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);">
+<div style="font-size:11px;color:#718096;">RESISTANCE</div>
+<div id="tw-resistance" style="font-size:20px;font-weight:900;margin-top:7px;">—</div>
+</div>
+
+</div>
+
+<div style="margin-top:15px;padding:18px;border-radius:18px;border:1px solid rgba(0,255,208,.14);background:rgba(0,255,208,.025);">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;">
+<div>
+<div style="font-size:11px;color:#718096;letter-spacing:2px;">YUKI / TW BLUEPRINT STATUS</div>
+<div id="tw-engine-message" style="margin-top:6px;color:#aab7c8;font-size:14px;">Initializing live analysis...</div>
+</div>
+<div id="tw-signal" style="padding:10px 18px;border-radius:999px;border:1px solid rgba(0,255,208,.25);color:#00ffd0;font-weight:900;font-size:13px;">SCANNING</div>
+</div>
+</div>
+
+<p style="margin:18px 0 0;color:#667387;font-size:11px;text-align:center;">
+Analytical information only. Market conditions can change rapidly. This terminal does not guarantee trading results.
+</p>
+
+</section>
+<!-- END TW INTELLIGENCE TERMINAL -->
+
+<script>
+(function(){
+let twCurrentAsset="XAU/USD";
+
+window.twSelectAsset=function(asset){
+twCurrentAsset=asset;
+const symbol=document.getElementById("tw-terminal-symbol");
+if(symbol) symbol.textContent=asset;
+twRunTerminal();
+};
+
+async function twRunTerminal(){
+const status=document.getElementById("tw-terminal-status");
+const msg=document.getElementById("tw-engine-message");
+
+if(status) status.textContent="SCANNING...";
+
+try{
+const response=await fetch("/api/scan?symbol="+encodeURIComponent(twCurrentAsset),{cache:"no-store"});
+const data=await response.json();
+
+if(data && data.error){
+throw new Error(data.error);
+}
+
+const bias=(data.bias||data.signal||"NEUTRAL").toString().toUpperCase();
+
+document.getElementById("tw-bias").textContent=bias;
+document.getElementById("tw-signal").textContent=bias;
+document.getElementById("tw-terminal-status").textContent="● LIVE";
+
+if(data.support) document.getElementById("tw-support").textContent=data.support;
+if(data.resistance) document.getElementById("tw-resistance").textContent=data.resistance;
+
+if(data.indication) document.getElementById("tw-indication").textContent=data.indication;
+if(data.correction) document.getElementById("tw-correction").textContent=data.correction;
+if(data.continuation) document.getElementById("tw-continuation").textContent=data.continuation;
+
+if(data.technical){
+document.getElementById("tw-tech").textContent=data.technical;
+document.getElementById("tw-tech-bar").style.width="70%";
+}
+
+if(data.fundamental){
+document.getElementById("tw-fund").textContent=data.fundamental;
+document.getElementById("tw-fund-bar").style.width="65%";
+}
+
+if(data.sentiment){
+document.getElementById("tw-sentiment").textContent=data.sentiment;
+document.getElementById("tw-sentiment-bar").style.width="60%";
+}
+
+if(msg) msg.textContent="Live analysis returned for "+twCurrentAsset+".";
+}catch(e){
+if(status) status.textContent="ENGINE READY";
+if(msg) msg.textContent="Waiting for live scan data. Existing market engine remains active.";
+}
+}
+
+document.addEventListener("DOMContentLoaded",function(){
+twRunTerminal();
+});
+})();
+</script>
+
+
 <!-- TW TRADES PUBLIC ACCESS -->
 <section id="request" style="
 margin:60px auto;
