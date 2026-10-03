@@ -915,991 +915,167 @@ def commit():
 # ADMIN
 # ============================================================
 
-@app.route("/admin/login",methods=["GET","POST"])
+@app.route("/admin/login", methods=["GET", "POST"])
 def login():
+    if request.method == "POST":
+        password = request.form.get("password", "")
 
-    if request.method=="POST":
-
-        password=request.form.get(
-            "password",""
-        )
-
-        hashed=hashlib.sha256(
+        hashed = hashlib.sha256(
             password.encode()
         ).hexdigest()
 
-        if hashed==get_setting(
-            "admin_password_hash"
-        ):
-            session["admin"]=True
+        if hashed == get_setting("admin_password_hash"):
+            session["admin"] = True
             return redirect("/admin")
 
+        return """
+        <!doctype html>
+        <html>
+        <meta name="viewport" content="width=device-width">
+        <body style="
+            margin:0;
+            background:#05070b;
+            color:white;
+            font-family:Arial,sans-serif;
+            min-height:100vh;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+        ">
+        <div style="
+            width:90%;
+            max-width:400px;
+            padding:30px;
+            background:#0b1119;
+            border:1px solid rgba(0,255,208,.18);
+            border-radius:20px;
+            box-shadow:0 20px 60px rgba(0,0,0,.45);
+            text-align:center;
+        ">
+            <div style="
+                color:#00ffd0;
+                font-size:12px;
+                font-weight:900;
+                letter-spacing:3px;
+                margin-bottom:10px;
+            ">TW TRADES</div>
+
+            <h1 style="margin:0 0 8px;">ADMIN LOGIN</h1>
+
+            <p style="color:#8b95a7;">
+                Incorrect password. Please try again.
+            </p>
+
+            <form method="post">
+                <input
+                    name="password"
+                    type="password"
+                    placeholder="Admin password"
+                    autocomplete="current-password"
+                    style="
+                        box-sizing:border-box;
+                        padding:15px;
+                        width:100%;
+                        border-radius:12px;
+                        border:1px solid #29384b;
+                        background:#05070b;
+                        color:white;
+                        outline:none;
+                    "
+                >
+                <br><br>
+                <button
+                    type="submit"
+                    style="
+                        padding:14px 25px;
+                        width:100%;
+                        border:0;
+                        border-radius:12px;
+                        background:#00ffd0;
+                        color:#03100e;
+                        font-weight:900;
+                        cursor:pointer;
+                    "
+                >LOGIN</button>
+            </form>
+        </div>
+        </body>
+        </html>
+        """
+
     return """
+    <!doctype html>
     <html>
     <meta name="viewport" content="width=device-width">
     <body style="
-    background:#05070b;color:white;
-    font-family:Arial;padding:35px">
-    <h1>TW ADMIN</h1>
-    <form method="post">
-    <input name="password"
-    type="password"
-    placeholder="Admin password"
-    style="padding:15px;width:90%;max-width:350px">
-    <br><br>
-    <button style="padding:14px 25px">
-    LOGIN
-    </button>
-    </form>
-    
-
-
-
-<!-- TW TRADES PUBLIC ACCESS -->
-<section id="request" style="
-margin:60px auto;
-max-width:1100px;
-padding:45px 25px;
-border:1px solid rgba(0,255,200,.25);
-border-radius:28px;
-background:linear-gradient(135deg,rgba(8,18,30,.98),rgba(5,10,20,.98));
-box-shadow:0 0 45px rgba(0,255,200,.08);
-text-align:center;
-">
-<div style="font-size:13px;letter-spacing:3px;color:#00ffd0;font-weight:800;">
-TW TRADES PUBLIC ACCESS
-</div>
-
-
-
-
-
-<h2 style="font-size:42px;margin:12px 0 8px;">
-PUBLIC ACCESS — <span style="color:#00ffd0;">R400</span>
-</h2>
-
-<p style="max-width:700px;margin:0 auto 25px;color:#aab7c8;line-height:1.7;">
-Request access to the TW Trades ecosystem and receive the instructions directly through WhatsApp.
-</p>
-
-<a href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
-style="
-display:inline-block;
-padding:16px 32px;
-border-radius:14px;
-background:#00ffd0;
-color:#03100e;
-font-weight:900;
-text-decoration:none;
-margin:8px;
-box-shadow:0 0 25px rgba(0,255,208,.25);
-">
-REQUEST ACCESS — R400
-</a>
-
-<div style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-<a href="https://instagram.com/ashleysnowfx"
-target="_blank"
-style="padding:12px 20px;border:1px solid #29384b;border-radius:12px;color:#fff;text-decoration:none;">
-Instagram · @ashleysnowfx
-</a>
-
-<a href="https://tiktok.com/@snowFx3"
-target="_blank"
-style="padding:12px 20px;border:1px solid #29384b;border-radius:12px;color:#fff;text-decoration:none;">
-TikTok · @snowFx3
-</a>
-</div>
-</section>
-
-
-<!-- TW TRADES MOBILE NAV -->
-<div class="tw-mobile-nav">
-<a href="#top" class="active"><span>⌂</span>Home</a>
-<a href="#terminal"><span>◈</span>Terminal</a>
-<a href="#intelligence"><span>◉</span>Intel</a>
-<a href="#titan"><span>◆</span>Titan</a>
-<a href="#yuki"><span>✦</span>Yuki</a>
-<a href="#request"><span>↗</span>Access</a>
-</div>
-
-
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("/sw.js", {scope: "/"})
-      .catch(function(error) {
-        console.log("TW Trades service worker:", error);
-      });
-  });
-}
-</script>
-
-
-<!-- =========================================================
-     TW COMMAND CENTER
-     Functional global navigation / mobile controls
-========================================================= -->
-
-<style>
-#twCommandOverlay{
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.68);
-backdrop-filter:blur(8px);
--webkit-backdrop-filter:blur(8px);
-z-index:9998;
-opacity:0;
-visibility:hidden;
-transition:.22s ease;
-}
-
-#twCommandOverlay.open{
-opacity:1;
-visibility:visible;
-}
-
-#twCommandDrawer{
-position:fixed;
-top:0;
-right:0;
-width:min(390px,92vw);
-height:100dvh;
-background:linear-gradient(160deg,#07121d,#02060b 72%);
-border-left:1px solid rgba(0,255,208,.16);
-box-shadow:-25px 0 70px rgba(0,0,0,.5);
-z-index:9999;
-transform:translateX(105%);
-transition:.28s cubic-bezier(.2,.8,.2,1);
-padding:22px;
-overflow-y:auto;
-}
-
-#twCommandDrawer.open{
-transform:translateX(0);
-}
-
-.tw-command-head{
-display:flex;
-justify-content:space-between;
-align-items:center;
-gap:15px;
-padding-bottom:20px;
-border-bottom:1px solid rgba(255,255,255,.08);
-}
-
-.tw-command-title{
-font-weight:900;
-font-size:18px;
-letter-spacing:1px;
-}
-
-.tw-command-title span{
-color:#00ffd0;
-}
-
-.tw-command-close{
-width:42px;
-height:42px;
-border-radius:50%;
-border:1px solid rgba(255,255,255,.12);
-background:rgba(255,255,255,.05);
-color:#fff;
-font-size:22px;
-cursor:pointer;
-}
-
-.tw-command-status{
-margin:18px 0;
-padding:14px;
-border-radius:16px;
-border:1px solid rgba(0,255,208,.14);
-background:rgba(0,255,208,.035);
-}
-
-.tw-command-status small{
-display:block;
-color:#718096;
-font-size:10px;
-letter-spacing:2px;
-margin-bottom:5px;
-}
-
-.tw-command-status strong{
-color:#00ffd0;
-}
-
-.tw-command-grid{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:10px;
-margin-top:16px;
-}
-
-.tw-command-btn{
-display:flex;
-align-items:center;
-gap:10px;
-min-height:52px;
-padding:12px 13px;
-border-radius:15px;
-border:1px solid rgba(255,255,255,.08);
-background:rgba(255,255,255,.035);
-color:#dbe5ef;
-text-decoration:none;
-font-size:13px;
-font-weight:800;
-cursor:pointer;
-transition:.18s ease;
-}
-
-.tw-command-btn:hover{
-transform:translateY(-2px);
-border-color:rgba(0,255,208,.35);
-background:rgba(0,255,208,.07);
-color:#00ffd0;
-}
-
-.tw-command-btn.full{
-grid-column:1/-1;
-}
-
-.tw-command-icon{
-font-size:18px;
-width:22px;
-text-align:center;
-}
-
-.tw-command-section{
-margin-top:24px;
-}
-
-.tw-command-section-title{
-font-size:10px;
-letter-spacing:2px;
-color:#64748b;
-font-weight:900;
-margin-bottom:10px;
-}
-
-#twMobileBar{
-display:none;
-}
-
-@media(max-width:760px){
-#twMobileBar{
-display:flex;
-position:fixed;
-left:10px;
-right:10px;
-bottom:10px;
-height:64px;
-z-index:9000;
-border:1px solid rgba(0,255,208,.14);
-border-radius:20px;
-background:rgba(3,8,14,.92);
-backdrop-filter:blur(16px);
--webkit-backdrop-filter:blur(16px);
-box-shadow:0 15px 45px rgba(0,0,0,.45);
-justify-content:space-around;
-align-items:center;
-padding:5px;
-}
-
-.tw-mobile-item{
-flex:1;
-height:54px;
-border:0;
-background:none;
-color:#718096;
-font-size:10px;
-font-weight:800;
-cursor:pointer;
-border-radius:15px;
-}
-
-.tw-mobile-item span{
-display:block;
-font-size:18px;
-margin-bottom:3px;
-}
-
-.tw-mobile-item.active,
-.tw-mobile-item:hover{
-color:#00ffd0;
-background:rgba(0,255,208,.06);
-}
-
-body{
-padding-bottom:82px;
-}
-
-.navlinks{
-display:none !important;
-}
-
-.menu{
-display:flex !important;
-align-items:center;
-justify-content:center;
-}
-}
-
-@media(min-width:761px){
-#twCommandDrawer{
-width:390px;
-}
-}
-
-#twToast{
-position:fixed;
-left:50%;
-bottom:28px;
-transform:translate(-50%,20px);
-z-index:10001;
-padding:12px 18px;
-border-radius:999px;
-background:#07131d;
-border:1px solid rgba(0,255,208,.25);
-color:#dce7f2;
-font-size:12px;
-font-weight:800;
-box-shadow:0 15px 40px rgba(0,0,0,.4);
-opacity:0;
-pointer-events:none;
-transition:.2s ease;
-}
-
-#twToast.show{
-opacity:1;
-transform:translate(-50%,0);
-}
-</style>
-
-<div id="twCommandOverlay"></div>
-
-<aside id="twCommandDrawer" aria-hidden="true">
-
-<div class="tw-command-head">
-<div class="tw-command-title">TW <span>COMMAND CENTER</span></div>
-<button class="tw-command-close" id="twCommandClose" type="button">×</button>
-</div>
-
-<div class="tw-command-status">
-<small>PLATFORM STATUS</small>
-<strong id="twCommandStatus">● TW TRADES ONLINE</strong>
-</div>
-
-<div class="tw-command-section">
-<div class="tw-command-section-title">NAVIGATE</div>
-
-<div class="tw-command-grid">
-
-<a class="tw-command-btn" href="#top">
-<span class="tw-command-icon">⌂</span> Home
-</a>
-
-<a class="tw-command-btn" href="#terminal">
-<span class="tw-command-icon">⌁</span> Terminal
-</a>
-
-<a class="tw-command-btn" href="#intelligence-terminal">
-<span class="tw-command-icon">◈</span> Intelligence
-</a>
-
-<a class="tw-command-btn" href="#intelligence">
-<span class="tw-command-icon">◉</span> News
-</a>
-
-<a class="tw-command-btn" href="#titan">
-<span class="tw-command-icon">🛡</span> Titan X
-</a>
-
-<a class="tw-command-btn" href="#yuki">
-<span class="tw-command-icon">✦</span> Yuki
-</a>
-
-<a class="tw-command-btn" href="#academy">
-<span class="tw-command-icon">⌘</span> Academy
-</a>
-
-<a class="tw-command-btn" href="#library">
-<span class="tw-command-icon">▣</span> Library
-</a>
-
-<a class="tw-command-btn full" href="#request">
-<span class="tw-command-icon">◆</span> Access & Packages
-</a>
-
-<a class="tw-command-btn full" href="/admin">
-<span class="tw-command-icon">🔐</span> Admin Panel
-</a>
-
-</div>
-</div>
-
-<div class="tw-command-section">
-<div class="tw-command-section-title">LIVE ACTIONS</div>
-
-<div class="tw-command-grid">
-
-<button class="tw-command-btn" id="twRefreshButton" type="button">
-<span class="tw-command-icon">↻</span> Refresh
-</button>
-
-<button class="tw-command-btn" id="twInstallButton" type="button">
-<span class="tw-command-icon">▣</span> Install App
-</button>
-
-<button class="tw-command-btn" id="twScanButton" type="button">
-<span class="tw-command-icon">⌁</span> Scan Market
-</button>
-
-<button class="tw-command-btn" id="twAIButton" type="button">
-<span class="tw-command-icon">✦</span> AI Analysis
-</button>
-
-<button class="tw-command-btn full" id="twWhatsAppButton" type="button">
-<span class="tw-command-icon">◉</span> Request Access on WhatsApp
-</button>
-
-<button class="tw-command-btn full" id="twTopButton" type="button">
-<span class="tw-command-icon">↑</span> Back to Top
-</button>
-
-</div>
-</div>
-
-<div class="tw-command-section">
-<div class="tw-command-section-title">QUICK MARKETS</div>
-
-<div class="tw-command-grid">
-
-<button class="tw-command-btn" data-tw-asset="XAU/USD" type="button">
-<span class="tw-command-icon">◆</span> Gold
-</button>
-
-<button class="tw-command-btn" data-tw-asset="EUR/USD" type="button">
-<span class="tw-command-icon">€</span> EUR/USD
-</button>
-
-<button class="tw-command-btn" data-tw-asset="GBP/USD" type="button">
-<span class="tw-command-icon">£</span> GBP/USD
-</button>
-
-<button class="tw-command-btn" data-tw-asset="USD/JPY" type="button">
-<span class="tw-command-icon">¥</span> USD/JPY
-</button>
-
-<button class="tw-command-btn" data-tw-asset="NASDAQ" type="button">
-<span class="tw-command-icon">N</span> NASDAQ
-</button>
-
-<button class="tw-command-btn" data-tw-asset="BTC/USD" type="button">
-<span class="tw-command-icon">₿</span> BTC/USD
-</button>
-
-</div>
-</div>
-
-<div class="tw-command-section">
-<div class="tw-command-section-title">SOCIAL / CONTACT</div>
-
-<div class="tw-command-grid">
-
-<a class="tw-command-btn" href="https://instagram.com/ashleysnowfx" target="_blank" rel="noopener">
-<span class="tw-command-icon">◎</span> Instagram
-</a>
-
-<a class="tw-command-btn" href="https://instagram.com/topwavetradesalltime" target="_blank" rel="noopener">
-<span class="tw-command-icon">◎</span> TW Instagram
-</a>
-
-<a class="tw-command-btn" href="https://tiktok.com/@snowFx3" target="_blank" rel="noopener">
-<span class="tw-command-icon">♪</span> TikTok
-</a>
-
-</div>
-</div>
-
-</aside>
-
-<div id="twMobileBar">
-
-<button class="tw-mobile-item active" type="button" data-mobile-target="#top">
-<span>⌂</span>Home
-</button>
-
-<button class="tw-mobile-item" type="button" data-mobile-target="#intelligence-terminal">
-<span>◈</span>Intel
-</button>
-
-<button class="tw-mobile-item" type="button" id="twMobileScan">
-<span>⌁</span>Scan
-</button>
-
-<button class="tw-mobile-item" type="button" data-mobile-target="#library">
-<span>▣</span>Library
-</button>
-
-<button class="tw-mobile-item" type="button" id="twMobileMenu">
-<span>☰</span>Menu
-</button>
-
-</div>
-
-<div id="twToast"></div>
-
-<script>
-(function(){
-
-function twOpenMenu(){
-const drawer=document.getElementById("twCommandDrawer");
-const overlay=document.getElementById("twCommandOverlay");
-const button=document.getElementById("twMenuButton");
-
-if(!drawer || !overlay) return;
-
-drawer.classList.add("open");
-overlay.classList.add("open");
-drawer.setAttribute("aria-hidden","false");
-
-if(button) button.setAttribute("aria-expanded","true");
-}
-
-function twCloseMenu(){
-const drawer=document.getElementById("twCommandDrawer");
-const overlay=document.getElementById("twCommandOverlay");
-const button=document.getElementById("twMenuButton");
-
-if(!drawer || !overlay) return;
-
-drawer.classList.remove("open");
-overlay.classList.remove("open");
-drawer.setAttribute("aria-hidden","true");
-
-if(button) button.setAttribute("aria-expanded","false");
-}
-
-window.twOpenMenu=twOpenMenu;
-window.twCloseMenu=twCloseMenu;
-
-function twToast(message){
-const toast=document.getElementById("twToast");
-if(!toast) return;
-
-toast.textContent=message;
-toast.classList.add("show");
-
-clearTimeout(window.twToastTimer);
-
-window.twToastTimer=setTimeout(function(){
-toast.classList.remove("show");
-},2600);
-}
-
-function twGo(target){
-const element=document.querySelector(target);
-
-if(element){
-element.scrollIntoView({
-behavior:"smooth",
-block:"start"
-});
-}
-
-twCloseMenu();
-}
-
-document.addEventListener("DOMContentLoaded",function(){
-
-const menu=document.getElementById("twMenuButton");
-const close=document.getElementById("twCommandClose");
-const overlay=document.getElementById("twCommandOverlay");
-
-if(menu) menu.addEventListener("click",twOpenMenu);
-if(close) close.addEventListener("click",twCloseMenu);
-if(overlay) overlay.addEventListener("click",twCloseMenu);
-
-document.addEventListener("keydown",function(event){
-if(event.key==="Escape") twCloseMenu();
-});
-
-document.querySelectorAll("#twCommandDrawer a[href^='#']").forEach(function(link){
-link.addEventListener("click",function(){
-setTimeout(twCloseMenu,50);
-});
-});
-
-document.querySelectorAll("[data-tw-asset]").forEach(function(button){
-
-button.addEventListener("click",function(){
-
-const asset=button.getAttribute("data-tw-asset");
-
-twCloseMenu();
-
-if(typeof window.twSelectAsset==="function"){
-window.twSelectAsset(asset);
-
-const terminal=document.getElementById("intelligence-terminal");
-
-if(terminal){
-terminal.scrollIntoView({
-behavior:"smooth",
-block:"start"
-});
-}
-
-twToast("Loading live "+asset+" analysis...");
-}else if(typeof window.scanSymbol==="function"){
-window.scanSymbol(asset);
-twGo("#terminal");
-}
-
-});
-});
-
-const scanButton=document.getElementById("twScanButton");
-
-if(scanButton){
-
-scanButton.addEventListener("click",function(){
-
-twCloseMenu();
-
-if(typeof window.scan==="function"){
-window.scan();
-twGo("#terminal");
-twToast("Running live market scan...");
-}else{
-twToast("Market scanner is not available.");
-}
-
-});
-
-}
-
-const aiButton=document.getElementById("twAIButton");
-
-if(aiButton){
-
-aiButton.addEventListener("click",function(){
-
-twCloseMenu();
-
-if(typeof window.runAI==="function"){
-window.runAI();
-twGo("#intelligence");
-twToast("Running market intelligence...");
-}else{
-twToast("AI analyst is not available.");
-}
-
-});
-
-}
-
-const refresh=document.getElementById("twRefreshButton");
-
-if(refresh){
-
-refresh.addEventListener("click",function(){
-
-twToast("Refreshing live market data...");
-
-if(typeof window.twRunTerminal==="function"){
-window.twRunTerminal();
-}
-
-if(typeof window.scan==="function"){
-try{
-window.scan();
-}catch(e){}
-}
-
-setTimeout(function(){
-window.location.reload();
-},700);
-
-});
-
-}
-
-const topButton=document.getElementById("twTopButton");
-
-if(topButton){
-
-topButton.addEventListener("click",function(){
-twCloseMenu();
-window.scrollTo({
-top:0,
-behavior:"smooth"
-});
-});
-
-}
-
-const whatsapp=document.getElementById("twWhatsAppButton");
-
-if(whatsapp){
-
-whatsapp.addEventListener("click",function(){
-
-const message=encodeURIComponent(
-"Hello TW Trades. I would like to request access to the TW Trades platform."
-);
-
-window.open(
-"https://wa.me/27697343252?text="+message,
-"_blank",
-"noopener"
-);
-
-});
-
-}
-
-document.querySelectorAll("[data-mobile-target]").forEach(function(button){
-
-button.addEventListener("click",function(){
-
-document.querySelectorAll(".tw-mobile-item").forEach(function(item){
-item.classList.remove("active");
-});
-
-button.classList.add("active");
-
-twGo(button.getAttribute("data-mobile-target"));
-
-});
-
-});
-
-const mobileMenu=document.getElementById("twMobileMenu");
-
-if(mobileMenu){
-mobileMenu.addEventListener("click",twOpenMenu);
-}
-
-const mobileScan=document.getElementById("twMobileScan");
-
-if(mobileScan){
-
-mobileScan.addEventListener("click",function(){
-
-document.querySelectorAll(".tw-mobile-item").forEach(function(item){
-item.classList.remove("active");
-});
-
-mobileScan.classList.add("active");
-
-if(typeof window.scan==="function"){
-window.scan();
-twGo("#terminal");
-twToast("Running live market scan...");
-}
-
-});
-
-}
-
-});
-
-/*
-   PWA INSTALL SUPPORT
-   Chromium exposes beforeinstallprompt when the site
-   meets the browser's install criteria.
-*/
-
-let twDeferredInstallPrompt=null;
-
-window.addEventListener("beforeinstallprompt",function(event){
-
-event.preventDefault();
-
-twDeferredInstallPrompt=event;
-
-const install=document.getElementById("twInstallButton");
-
-if(install){
-install.textContent="▣ Install App";
-}
-
-});
-
-document.addEventListener("DOMContentLoaded",function(){
-
-const install=document.getElementById("twInstallButton");
-
-if(!install) return;
-
-install.addEventListener("click",async function(){
-
-if(twDeferredInstallPrompt){
-
-twDeferredInstallPrompt.prompt();
-
-const result=await twDeferredInstallPrompt.userChoice;
-
-twDeferredInstallPrompt=null;
-
-if(result && result.outcome==="accepted"){
-twToast("TW Trades installation started.");
-}else{
-twToast("Installation cancelled.");
-}
-
-return;
-}
-
-if(window.matchMedia("(display-mode: standalone)").matches){
-
-twToast("TW Trades is already installed.");
-
-return;
-}
-
-twToast("Use your browser menu and choose Add to Home screen.");
-
-});
-
-});
-
-window.addEventListener("appinstalled",function(){
-twDeferredInstallPrompt=null;
-twToast("TW Trades installed successfully.");
-});
-
-})();
-</script>
-<!-- END TW COMMAND CENTER -->
-
-
-<!-- TW TRADES TRADINGVIEW TERMINAL -->
-<section id="tw-tradingview" style="
-    margin:24px auto;
-    width:100%;
-    max-width:1400px;
-    padding:18px;
-    box-sizing:border-box;
-">
-  <div style="
-      background:linear-gradient(145deg,#111827,#05070b);
-      border:1px solid rgba(255,255,255,.10);
-      border-radius:18px;
-      padding:16px;
-      box-shadow:0 12px 35px rgba(0,0,0,.35);
-  ">
-    <div style="
+        margin:0;
+        background:#05070b;
+        color:white;
+        font-family:Arial,sans-serif;
+        min-height:100vh;
         display:flex;
-        justify-content:space-between;
         align-items:center;
-        gap:12px;
-        margin-bottom:14px;
-        flex-wrap:wrap;
+        justify-content:center;
     ">
-      <div>
+    <div style="
+        width:90%;
+        max-width:400px;
+        padding:30px;
+        background:#0b1119;
+        border:1px solid rgba(0,255,208,.18);
+        border-radius:20px;
+        box-shadow:0 20px 60px rgba(0,0,0,.45);
+        text-align:center;
+    ">
         <div style="
+            color:#00ffd0;
             font-size:12px;
-            letter-spacing:2px;
-            color:#8b95a7;
-            text-transform:uppercase;
-        ">TW Trades Intelligence</div>
+            font-weight:900;
+            letter-spacing:3px;
+            margin-bottom:10px;
+        ">TW TRADES</div>
 
-        <h2 style="
-            margin:4px 0 0;
-            font-size:22px;
-            color:#fff;
-        ">LIVE MARKET CHART</h2>
-      </div>
+        <h1 style="margin:0 0 8px;">ADMIN LOGIN</h1>
 
-      <a
-        href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD"
-        target="_blank"
-        rel="noopener noreferrer"
-        style="
-          display:inline-block;
-          padding:9px 14px;
-          border-radius:10px;
-          background:#1f2937;
-          color:#fff;
-          text-decoration:none;
-          font-size:13px;
-        "
-      >Open TradingView ↗</a>
+        <p style="color:#8b95a7;">
+            Secure administrator access
+        </p>
+
+        <form method="post">
+            <input
+                name="password"
+                type="password"
+                placeholder="Admin password"
+                autocomplete="current-password"
+                required
+                style="
+                    box-sizing:border-box;
+                    padding:15px;
+                    width:100%;
+                    border-radius:12px;
+                    border:1px solid #29384b;
+                    background:#05070b;
+                    color:white;
+                    outline:none;
+                "
+            >
+            <br><br>
+            <button
+                type="submit"
+                style="
+                    padding:14px 25px;
+                    width:100%;
+                    border:0;
+                    border-radius:12px;
+                    background:#00ffd0;
+                    color:#03100e;
+                    font-weight:900;
+                    cursor:pointer;
+                "
+            >LOGIN</button>
+        </form>
     </div>
-
-    <div style="
-        position:relative;
-        width:100%;
-        height:620px;
-        min-height:420px;
-        overflow:hidden;
-        border-radius:14px;
-        background:#0b0f14;
-    ">
-      <iframe
-        src="https://www.tradingview.com/widgetembed/?frameElementId=tw_tradingview_chart&symbol=OANDA%3AXAUUSD&interval=15&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=0&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Africa%2FJohannesburg&withdateranges=1&hideideas=1&enablepublishing=0&hidelegend=0&calendar=0"
-        title="TW Trades Live TradingView Chart"
-        style="
-          position:absolute;
-          inset:0;
-          width:100%;
-          height:100%;
-          border:0;
-        "
-        loading="lazy"
-        allowfullscreen
-      ></iframe>
-    </div>
-
-    <div style="
-        margin-top:12px;
-        display:flex;
-        gap:8px;
-        flex-wrap:wrap;
-    ">
-      <button onclick="twChangeChart('OANDA:XAUUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">XAUUSD</button>
-      <button onclick="twChangeChart('OANDA:EURUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">EURUSD</button>
-      <button onclick="twChangeChart('OANDA:GBPUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">GBPUSD</button>
-      <button onclick="twChangeChart('NASDAQ:NDX')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">NASDAQ</button>
-      <button onclick="twChangeChart('DJ:DJI')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">US30</button>
-    </div>
-  </div>
-</section>
-
-<script>
-function twChangeChart(symbol) {
-    const frame = document.querySelector('#tw-tradingview iframe');
-    if (!frame) return;
-
-    const encoded = encodeURIComponent(symbol);
-
-    frame.src =
-      'https://www.tradingview.com/widgetembed/' +
-      '?frameElementId=tw_tradingview_chart' +
-      '&symbol=' + encoded +
-      '&interval=15' +
-      '&hidesidetoolbar=0' +
-      '&hidetoptoolbar=0' +
-      '&symboledit=1' +
-      '&saveimage=0' +
-      '&toolbarbg=f1f3f6' +
-      '&studies=%5B%5D' +
-      '&theme=dark' +
-      '&style=1' +
-      '&timezone=Africa%2FJohannesburg' +
-      '&withdateranges=1' +
-      '&hideideas=1' +
-      '&enablepublishing=0' +
-      '&hidelegend=0' +
-      '&calendar=0';
-}
-</script>
-<!-- END TW TRADES TRADINGVIEW TERMINAL -->
-
-</body>
+    </body>
     </html>
     """
 
