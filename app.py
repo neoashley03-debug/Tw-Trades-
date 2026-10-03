@@ -1775,6 +1775,130 @@ twToast("TW Trades installed successfully.");
 </script>
 <!-- END TW COMMAND CENTER -->
 
+
+<!-- TW TRADES TRADINGVIEW TERMINAL -->
+<section id="tw-tradingview" style="
+    margin:24px auto;
+    width:100%;
+    max-width:1400px;
+    padding:18px;
+    box-sizing:border-box;
+">
+  <div style="
+      background:linear-gradient(145deg,#111827,#05070b);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 12px 35px rgba(0,0,0,.35);
+  ">
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+        margin-bottom:14px;
+        flex-wrap:wrap;
+    ">
+      <div>
+        <div style="
+            font-size:12px;
+            letter-spacing:2px;
+            color:#8b95a7;
+            text-transform:uppercase;
+        ">TW Trades Intelligence</div>
+
+        <h2 style="
+            margin:4px 0 0;
+            font-size:22px;
+            color:#fff;
+        ">LIVE MARKET CHART</h2>
+      </div>
+
+      <a
+        href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="
+          display:inline-block;
+          padding:9px 14px;
+          border-radius:10px;
+          background:#1f2937;
+          color:#fff;
+          text-decoration:none;
+          font-size:13px;
+        "
+      >Open TradingView ↗</a>
+    </div>
+
+    <div style="
+        position:relative;
+        width:100%;
+        height:620px;
+        min-height:420px;
+        overflow:hidden;
+        border-radius:14px;
+        background:#0b0f14;
+    ">
+      <iframe
+        src="https://www.tradingview.com/widgetembed/?frameElementId=tw_tradingview_chart&symbol=OANDA%3AXAUUSD&interval=15&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=0&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Africa%2FJohannesburg&withdateranges=1&hideideas=1&enablepublishing=0&hidelegend=0&calendar=0"
+        title="TW Trades Live TradingView Chart"
+        style="
+          position:absolute;
+          inset:0;
+          width:100%;
+          height:100%;
+          border:0;
+        "
+        loading="lazy"
+        allowfullscreen
+      ></iframe>
+    </div>
+
+    <div style="
+        margin-top:12px;
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    ">
+      <button onclick="twChangeChart('OANDA:XAUUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">XAUUSD</button>
+      <button onclick="twChangeChart('OANDA:EURUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">EURUSD</button>
+      <button onclick="twChangeChart('OANDA:GBPUSD')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">GBPUSD</button>
+      <button onclick="twChangeChart('NASDAQ:NDX')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">NASDAQ</button>
+      <button onclick="twChangeChart('DJ:DJI')" style="padding:9px 13px;border:0;border-radius:9px;background:#1f2937;color:#fff;">US30</button>
+    </div>
+  </div>
+</section>
+
+<script>
+function twChangeChart(symbol) {
+    const frame = document.querySelector('#tw-tradingview iframe');
+    if (!frame) return;
+
+    const encoded = encodeURIComponent(symbol);
+
+    frame.src =
+      'https://www.tradingview.com/widgetembed/' +
+      '?frameElementId=tw_tradingview_chart' +
+      '&symbol=' + encoded +
+      '&interval=15' +
+      '&hidesidetoolbar=0' +
+      '&hidetoptoolbar=0' +
+      '&symboledit=1' +
+      '&saveimage=0' +
+      '&toolbarbg=f1f3f6' +
+      '&studies=%5B%5D' +
+      '&theme=dark' +
+      '&style=1' +
+      '&timezone=Africa%2FJohannesburg' +
+      '&withdateranges=1' +
+      '&hideideas=1' +
+      '&enablepublishing=0' +
+      '&hidelegend=0' +
+      '&calendar=0';
+}
+</script>
+<!-- END TW TRADES TRADINGVIEW TERMINAL -->
+
 </body>
     </html>
     """
