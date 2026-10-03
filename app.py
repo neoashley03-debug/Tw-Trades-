@@ -6886,6 +6886,521 @@ document.addEventListener(
 );
 </script>
 
+
+<style>
+/* =========================================================
+   TW TRADES — LIVE MARKET TERMINAL
+   ========================================================= */
+#tw-live-terminal-v2{
+  margin:32px auto;
+  max-width:1500px;
+  padding:18px;
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:24px;
+  background:linear-gradient(180deg,rgba(15,18,24,.98),rgba(7,9,13,.98));
+  box-shadow:0 20px 70px rgba(0,0,0,.35);
+}
+
+.tw-live-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+  margin-bottom:16px;
+  flex-wrap:wrap;
+}
+
+.tw-live-title{
+  font-size:clamp(20px,3vw,30px);
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
+.tw-live-sub{
+  opacity:.65;
+  font-size:12px;
+  margin-top:4px;
+}
+
+.tw-live-status{
+  padding:8px 12px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:999px;
+  font-size:11px;
+  letter-spacing:.08em;
+}
+
+.tw-live-assets{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  padding:4px 0 12px;
+  scrollbar-width:none;
+}
+
+.tw-live-assets::-webkit-scrollbar{display:none}
+
+.tw-live-assets button{
+  flex:0 0 auto;
+  border:1px solid rgba(255,255,255,.1);
+  background:#11151c;
+  color:inherit;
+  border-radius:12px;
+  padding:10px 14px;
+  cursor:pointer;
+  font-weight:700;
+}
+
+.tw-live-assets button.active{
+  border-color:#fff;
+  background:#fff;
+  color:#050505;
+}
+
+.tw-live-grid{
+  display:grid;
+  grid-template-columns:minmax(0,2fr) minmax(300px,1fr);
+  gap:14px;
+}
+
+.tw-live-chart{
+  min-height:520px;
+  border-radius:18px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.08);
+  background:#05070a;
+}
+
+#tw-tv-widget{
+  width:100%;
+  height:100%;
+  min-height:520px;
+}
+
+.tw-live-analysis{
+  display:grid;
+  gap:10px;
+}
+
+.tw-live-card{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  padding:15px;
+  background:rgba(255,255,255,.025);
+}
+
+.tw-live-card-title{
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  opacity:.55;
+  margin-bottom:8px;
+}
+
+.tw-live-value{
+  font-size:18px;
+  font-weight:800;
+  line-height:1.25;
+}
+
+.tw-live-detail{
+  font-size:12px;
+  opacity:.7;
+  margin-top:5px;
+  line-height:1.5;
+}
+
+.tw-live-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+
+.tw-live-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.tw-live-actions button{
+  border:1px solid rgba(255,255,255,.12);
+  background:#11151c;
+  color:inherit;
+  padding:10px 13px;
+  border-radius:11px;
+  cursor:pointer;
+  font-weight:700;
+}
+
+.tw-live-loading{
+  opacity:.55;
+}
+
+@media(max-width:900px){
+  .tw-live-grid{
+    grid-template-columns:1fr;
+  }
+
+  .tw-live-chart,
+  #tw-tv-widget{
+    min-height:420px;
+  }
+}
+
+@media(max-width:600px){
+  #tw-live-terminal-v2{
+    margin:20px 8px;
+    padding:12px;
+    border-radius:18px;
+  }
+
+  .tw-live-row{
+    grid-template-columns:1fr;
+  }
+
+  .tw-live-chart,
+  #tw-tv-widget{
+    min-height:360px;
+  }
+}
+</style>
+
+<section id="tw-live-terminal-v2">
+
+  <div class="tw-live-head">
+    <div>
+      <div class="tw-live-title">TW LIVE MARKET TERMINAL</div>
+      <div class="tw-live-sub">
+        TradingView chart • TW Blueprint scanner • live API analysis
+      </div>
+    </div>
+
+    <div id="tw-live-status" class="tw-live-status">
+      CONNECTING
+    </div>
+  </div>
+
+  <div class="tw-live-assets">
+    <button data-tw-asset="XAU/USD" class="active">XAU/USD</button>
+    <button data-tw-asset="EUR/USD">EUR/USD</button>
+    <button data-tw-asset="GBP/USD">GBP/USD</button>
+    <button data-tw-asset="USD/JPY">USD/JPY</button>
+    <button data-tw-asset="NASDAQ">NASDAQ</button>
+    <button data-tw-asset="BTC/USD">BTC/USD</button>
+  </div>
+
+  <div class="tw-live-grid">
+
+    <div class="tw-live-chart">
+      <div id="tw-tv-widget"></div>
+    </div>
+
+    <div class="tw-live-analysis">
+
+      <div class="tw-live-card">
+        <div class="tw-live-card-title">Selected Market</div>
+        <div id="tw-live-symbol" class="tw-live-value">XAU/USD</div>
+        <div id="tw-live-message" class="tw-live-detail">
+          Connecting to live market scanner...
+        </div>
+      </div>
+
+      <div class="tw-live-card">
+        <div class="tw-live-card-title">Market Bias</div>
+        <div id="tw-live-bias" class="tw-live-value">SCANNING</div>
+        <div id="tw-live-signal" class="tw-live-detail">Waiting for live response</div>
+      </div>
+
+      <div class="tw-live-row">
+
+        <div class="tw-live-card">
+          <div class="tw-live-card-title">Support</div>
+          <div id="tw-live-support" class="tw-live-value">—</div>
+        </div>
+
+        <div class="tw-live-card">
+          <div class="tw-live-card-title">Resistance</div>
+          <div id="tw-live-resistance" class="tw-live-value">—</div>
+        </div>
+
+      </div>
+
+      <div class="tw-live-card">
+        <div class="tw-live-card-title">TW Blueprint</div>
+
+        <div class="tw-live-detail">
+          <strong>Indication:</strong>
+          <span id="tw-live-indication">Waiting</span>
+        </div>
+
+        <div class="tw-live-detail">
+          <strong>Correction:</strong>
+          <span id="tw-live-correction">Waiting</span>
+        </div>
+
+        <div class="tw-live-detail">
+          <strong>Continuation:</strong>
+          <span id="tw-live-continuation">Waiting</span>
+        </div>
+      </div>
+
+      <div class="tw-live-card">
+
+        <div class="tw-live-card-title">Market Intelligence</div>
+
+        <div class="tw-live-detail">
+          <strong>Technical:</strong>
+          <span id="tw-live-technical">Waiting</span>
+        </div>
+
+        <div class="tw-live-detail">
+          <strong>Fundamental:</strong>
+          <span id="tw-live-fundamental">Waiting</span>
+        </div>
+
+        <div class="tw-live-detail">
+          <strong>Sentiment:</strong>
+          <span id="tw-live-sentiment">Waiting</span>
+        </div>
+
+      </div>
+
+      <div class="tw-live-actions">
+        <button type="button" onclick="twLiveScan()">SCAN MARKET</button>
+        <button type="button" onclick="twLiveRefresh()">REFRESH</button>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+
+const TW_LIVE_SYMBOLS={
+  "XAU/USD":"OANDA:XAUUSD",
+  "EUR/USD":"OANDA:EURUSD",
+  "GBP/USD":"OANDA:GBPUSD",
+  "USD/JPY":"OANDA:USDJPY",
+  "NASDAQ":"NASDAQ:NDX",
+  "BTC/USD":"COINBASE:BTCUSD"
+};
+
+let twLiveAsset="XAU/USD";
+let twLiveTimer=null;
+
+function twEl(id){
+  return document.getElementById(id);
+}
+
+function twTradingView(asset){
+
+  const box=twEl("tw-tv-widget");
+  if(!box) return;
+
+  box.innerHTML="";
+
+  const wrapper=document.createElement("div");
+  wrapper.className="tradingview-widget-container";
+  wrapper.style.width="100%";
+  wrapper.style.height="100%";
+
+  const chart=document.createElement("div");
+  chart.className="tradingview-widget-container__widget";
+  chart.style.width="100%";
+  chart.style.height="100%";
+
+  wrapper.appendChild(chart);
+  box.appendChild(wrapper);
+
+  const script=document.createElement("script");
+
+  script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.type="text/javascript";
+  script.async=true;
+
+  script.innerHTML=JSON.stringify({
+    autosize:true,
+    symbol:TW_LIVE_SYMBOLS[asset] || "OANDA:XAUUSD",
+    interval:"15",
+    timezone:"Africa/Johannesburg",
+    theme:"dark",
+    style:"1",
+    locale:"en",
+    allow_symbol_change:false,
+    calendar:false,
+    support_host:"https://www.tradingview.com"
+  });
+
+  wrapper.appendChild(script);
+}
+
+function twText(id,value){
+
+  const el=twEl(id);
+
+  if(!el) return;
+
+  if(value===undefined || value===null || value===""){
+    el.textContent="Not returned by live engine";
+    return;
+  }
+
+  el.textContent=String(value);
+}
+
+window.twLiveScan=async function(){
+
+  twText("tw-live-message","Requesting live scanner data...");
+  twText("tw-live-bias","SCANNING");
+
+  const status=twEl("tw-live-status");
+
+  if(status) status.textContent="SCANNING";
+
+  try{
+
+    const response=await fetch(
+      "/api/scan?symbol="+encodeURIComponent(twLiveAsset),
+      {
+        cache:"no-store",
+        headers:{
+          "Accept":"application/json"
+        }
+      }
+    );
+
+    if(!response.ok){
+      throw new Error("Scanner HTTP "+response.status);
+    }
+
+    const data=await response.json();
+
+    if(data && data.error){
+      throw new Error(data.error);
+    }
+
+    const bias=
+      data.bias ??
+      data.signal ??
+      data.direction ??
+      "NEUTRAL";
+
+    twText("tw-live-symbol",twLiveAsset);
+    twText("tw-live-bias",bias);
+    twText(
+      "tw-live-signal",
+      data.signal_detail ??
+      data.reason ??
+      data.message ??
+      "Live scanner response received."
+    );
+
+    twText("tw-live-support",data.support);
+    twText("tw-live-resistance",data.resistance);
+
+    twText("tw-live-indication",data.indication);
+    twText("tw-live-correction",data.correction);
+    twText("tw-live-continuation",data.continuation);
+
+    twText(
+      "tw-live-technical",
+      data.technical ??
+      data.technical_analysis
+    );
+
+    twText(
+      "tw-live-fundamental",
+      data.fundamental ??
+      data.fundamental_analysis
+    );
+
+    twText(
+      "tw-live-sentiment",
+      data.sentiment ??
+      data.sentiment_analysis
+    );
+
+    twText(
+      "tw-live-message",
+      "Live scanner response received for "+twLiveAsset+"."
+    );
+
+    if(status) status.textContent="● LIVE";
+
+  }catch(error){
+
+    twText(
+      "tw-live-message",
+      "Live scanner unavailable: "+error.message
+    );
+
+    if(status) status.textContent="ENGINE OFFLINE";
+  }
+};
+
+window.twLiveSelect=function(asset){
+
+  if(!TW_LIVE_SYMBOLS[asset]) return;
+
+  twLiveAsset=asset;
+
+  document
+    .querySelectorAll("[data-tw-asset]")
+    .forEach(function(button){
+      button.classList.toggle(
+        "active",
+        button.getAttribute("data-tw-asset")===asset
+      );
+    });
+
+  twText("tw-live-symbol",asset);
+
+  twTradingView(asset);
+  twLiveScan();
+
+};
+
+window.twLiveRefresh=function(){
+
+  twTradingView(twLiveAsset);
+  twLiveScan();
+
+};
+
+document.addEventListener("click",function(event){
+
+  const button=event.target.closest("[data-tw-asset]");
+
+  if(!button) return;
+
+  twLiveSelect(button.getAttribute("data-tw-asset"));
+
+});
+
+document.addEventListener("DOMContentLoaded",function(){
+
+  twTradingView(twLiveAsset);
+  twLiveScan();
+
+  if(twLiveTimer){
+    clearInterval(twLiveTimer);
+  }
+
+  twLiveTimer=setInterval(
+    function(){
+      twLiveScan();
+    },
+    60000
+  );
+
+});
+
+})();
+</script>
+
+
 """
 
 @app.route("/")
