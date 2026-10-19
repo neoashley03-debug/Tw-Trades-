@@ -425,6 +425,140 @@ price action, market structure, risk management and trading psychology.
 </section>
 
 
+<!-- TW TRADES INTELLIGENCE DASHBOARD -->
+<style>
+#tw-intel {
+  max-width:1100px;
+  margin:30px auto;
+  padding:24px;
+  color:#f5f5f5;
+  background:linear-gradient(145deg,#111820,#080b10);
+  border:1px solid #293847;
+  border-radius:20px;
+  font-family:Arial,sans-serif;
+}
+#tw-intel .intel-head {
+  display:flex;justify-content:space-between;
+  align-items:center;gap:12px;flex-wrap:wrap;
+}
+#tw-intel .intel-tag {
+  color:#64dfaa;font-size:12px;letter-spacing:2px;
+}
+#tw-intel .intel-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:14px;margin-top:22px;
+}
+#tw-intel .intel-card {
+  background:#101922;border:1px solid #293847;
+  border-radius:14px;padding:18px;min-width:0;
+}
+#tw-intel .intel-label {color:#9cabb9;font-size:13px}
+#tw-intel .intel-value {
+  font-size:22px;font-weight:700;margin-top:10px;
+  overflow-wrap:anywhere;
+}
+#tw-intel button {
+  background:#d6ad55;color:#101010;border:0;
+  border-radius:9px;padding:12px 17px;
+  font-weight:700;cursor:pointer;
+}
+#tw-intel #tw-scan-results {
+  margin-top:18px;white-space:pre-wrap;
+  overflow-wrap:anywhere;color:#c9d5df;
+  font-size:13px;line-height:1.7;
+}
+</style>
+
+<section id="tw-intel">
+  <div class="intel-head">
+    <div>
+      <div class="intel-tag">TW TRADES INTELLIGENCE</div>
+      <h2 style="margin:9px 0">Market Scanner</h2>
+      <p style="color:#9cabb9;margin:0">
+        Inspect scanner output from the existing platform.
+      </p>
+    </div>
+    <button type="button" id="tw-run-scan">Run Scan</button>
+  </div>
+
+  <div class="intel-grid">
+    <div class="intel-card">
+      <div class="intel-label">Scanner status</div>
+      <div class="intel-value" id="tw-scan-status">Not checked</div>
+    </div>
+    <div class="intel-card">
+      <div class="intel-label">Current session</div>
+      <div class="intel-value" id="tw-scan-session">—</div>
+    </div>
+    <div class="intel-card">
+      <div class="intel-label">Qualified results</div>
+      <div class="intel-value" id="tw-scan-count">—</div>
+    </div>
+  </div>
+
+  <div id="tw-scan-results" aria-live="polite">
+    Select Run Scan to request current results from the server.
+  </div>
+  <p style="color:#8291a0;font-size:12px">
+    Scanner output is informational, not a guarantee of profitable trades.
+    Verify market data and risk before acting.
+  </p>
+</section>
+
+<script>
+(function () {
+  const button = document.getElementById("tw-run-scan");
+  if (!button) return;
+
+  button.addEventListener("click", async function () {
+    const status = document.getElementById("tw-scan-status");
+    const session = document.getElementById("tw-scan-session");
+    const count = document.getElementById("tw-scan-count");
+    const output = document.getElementById("tw-scan-results");
+
+    button.disabled = true;
+    status.textContent = "Connecting…";
+    output.textContent = "Requesting scanner data from the server…";
+
+    try {
+      const response = await fetch("/api/scan", {
+        headers: { "Accept": "application/json" },
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error("Server returned HTTP " + response.status);
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data.results)) {
+        throw new Error("Unexpected scanner response format");
+      }
+
+      status.textContent = "Connected";
+      session.textContent = data.session || "Not supplied";
+      count.textContent = data.results.length;
+      output.textContent = data.results.length
+        ? JSON.stringify(data.results, null, 2)
+        : "No qualified setups were returned by the scanner.";
+    } catch (error) {
+      status.textContent = "Unavailable";
+      session.textContent = "—";
+      count.textContent = "—";
+      output.textContent =
+        "The scanner could not return usable data. " +
+        "Check the service and API response before relying on it. " +
+        error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+<!-- END TW TRADES INTELLIGENCE DASHBOARD -->
+
 <!-- WHAT YOU LEARN -->
 
 <section id="learn">
