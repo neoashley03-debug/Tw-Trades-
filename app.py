@@ -265,11 +265,19 @@ def current_session():
 # MARKET DATA
 # ============================================================
 
+
+import os
+
 def td(symbol,interval,size=100):
-    key=get_setting("twelve_data_key")
+    key = (
+        get_setting("twelve_data_key")
+        or os.environ.get("TWELVE_DATA_API_KEY")
+        or ""
+    ).strip()
 
     if not key:
-        return None,"Twelve Data key not configured"
+        return None, "Twelve Data key not configured"
+
 
     try:
         r=requests.get(
