@@ -13,6 +13,15 @@ TIKTOK_URL = "https://tiktok.com/@snowFx3"
 REQUEST_URL = "https://tw-trades-1.onrender.com/#request"
 
 app = Flask(__name__)
+
+@app.route("/google6e5d7fb63d6d81b1.html")
+def google_site_verification():
+    return (
+        "google-site-verification: google6e5d7fb63d6d81b1.html",
+        200,
+        {"Content-Type": "text/html; charset=utf-8"}
+    )
+
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
 DB = "tw_blueprint.db"
