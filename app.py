@@ -13,7 +13,15 @@ TIKTOK_URL = "https://tiktok.com/@snowFx3"
 REQUEST_URL = "https://tw-trades-1.onrender.com/#request"
 
 app = Flask(__name__)
-
+@app.route("/robots.txt")
+def robots_txt():
+    from flask import Response
+    content = """User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /admin
+"""
+    return Response(content, mimetype="text/plain")
 @app.route("/google6e5d7fb63d6d81b1.html")
 def google_site_verification():
     return (
