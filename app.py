@@ -111,7 +111,7 @@ ASSETS = {
     "Volatility 100 Index": {"group":"SYNTHETICS","td":"R_100","news":"R_100"},
     "Boom 500 Index": {"group":"SYNTHETICS","td":"BOOM500","news":"BOOM500"},
     "Crash 500 Index": {"group":"SYNTHETICS","td":"CRASH500","news":"CRASH500"},
-    "Step Index": {"group":"SYNTHETICS","td":"STP","news":"STP"}
+    "Step Index": {"group":"SYNTHETICS","td":"stpRNG","news":"stpRNG"}
 }
 
 COURSES = [
@@ -446,8 +446,105 @@ def biquote_candles(symbol, interval, size=100):
         return None, "BiQuote market feed failed: " + str(exc)
 
 
+def deriv_candles(symbol, interval, size=100):
+    """Fetch real OHLC candles from Deriv's public market-data WebSocket."""
+    import json
+    import websocket
+
+    app_id = os.environ.get("DERIV_APP_ID", "1089").strip()
+    granularity = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval)
+    if not granularity:
+        return None, "Unsupported Deriv candle interval: " + str(interval)
+
+    # The names/codes are verified against Deriv's public market-symbol conventions.
+    deriv_symbol = {
+        "R_10": "R_10",
+        "R_25": "R_25",
+        "R_50": "R_50",
+        "R_75": "R_75",
+        "R_100": "R_100",
+        "BOOM500": "BOOM500",
+        "CRASH500": "CRASH500",
+        "stpRNG": "stpRNG",
+    }.get(symbol, symbol)
+
+    ws = None
+    try:
+        ws = websocket.create_connection(
+            "wss://ws.derivws.com/websockets/v3?app_id=" + app_id,
+            timeout=10,
+            enable_multithread=False
+        )
+        ws.send(json.dumps({
+            "ticks_history": deriv_symbol,
+            "adjust_start_time": 1,
+            "count": min(max(int(size), 30), 500),
+            "end": "latest",
+            "style": "candles",
+            "granularity": granularity,
+            "req_id": 731
+        }))
+
+        response_data = None
+        for _ in range(5):
+            message = json.loads(ws.recv())
+            if message.get("req_id") == 731 or message.get("msg_type") == "history":
+                response_data = message
+                break
+        if not isinstance(response_data, dict):
+            return None, "Deriv did not return candle history for " + deriv_symbol
+        if response_data.get("error"):
+            error = response_data["error"]
+            return None, "Deriv rejected " + deriv_symbol + ": " + str(error.get("message", "API error"))
+
+        raw_candles = response_data.get("candles", [])
+        if not isinstance(raw_candles, list) or not raw_candles:
+            return None, "Deriv returned no candle history for " + deriv_symbol
+
+        values = []
+        for candle in raw_candles:
+            try:
+                epoch = int(candle["epoch"])
+                values.append({
+                    "time": datetime.fromtimestamp(epoch, timezone.utc).isoformat(),
+                    "open": float(candle["open"]),
+                    "high": float(candle["high"]),
+                    "low": float(candle["low"]),
+                    "close": float(candle["close"])
+                })
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return None, "Deriv returned a malformed candle for " + deriv_symbol
+
+        values.sort(key=lambda item: item["time"])
+        if not _valid_ohlc(values):
+            return None, "Deriv returned malformed or insufficient completed candles for " + deriv_symbol
+
+        age_seconds = max(0, (datetime.now(timezone.utc) -
+                              datetime.fromisoformat(values[-1]["time"])).total_seconds())
+        interval_seconds = granularity
+        freshness_limit = max(1200, interval_seconds * 2 + 300)
+        if age_seconds > freshness_limit:
+            return None, (
+                "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
+                str(round(age_seconds / 60)) + " minutes old."
+            )
+        return values, None
+    except Exception as exc:
+        return None, "Deriv market feed failed for " + deriv_symbol + ": " + str(exc)
+    finally:
+        if ws is not None:
+            try:
+                ws.close()
+            except Exception:
+                pass
+
+
 def td(symbol, interval, size=100):
-    """Use the public BiQuote OHLC feed only; no Twelve Data key is required."""
+    """Route synthetic indices to Deriv; use BiQuote for other asset groups."""
+    synthetic_symbols = {item.get("td") for item in ASSETS.values()
+                         if item.get("group") == "SYNTHETICS"}
+    if symbol in synthetic_symbols:
+        return deriv_candles(symbol, interval, size)
     return biquote_candles(symbol, interval, size)
 
 # ============================================================
