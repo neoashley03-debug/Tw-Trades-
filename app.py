@@ -329,8 +329,25 @@ def current_session():
 
 import os
 
+def _valid_ohlc(values, minimum=30):
+    """Reject malformed, non-finite, or impossible candles before analysis."""
+    import math
+    if not isinstance(values, list) or len(values) < minimum:
+        return False
+    for bar in values:
+        try:
+            o, h, low, c = (float(bar[k]) for k in ("open", "high", "low", "close"))
+            if not all(math.isfinite(v) and v > 0 for v in (o, h, low, c)):
+                return False
+            if h < max(o, c, low) or low > min(o, c, h):
+                return False
+        except (KeyError, TypeError, ValueError):
+            return False
+    return True
+
+
 def biquote_candles(symbol, interval, size=100):
-    """Fallback OHLC feed. No API key is required for public read endpoints."""
+    """Read public OHLC candles; never substitute prices or fabricate bars."""
     symbol_map = {
         "XAU/USD": "XAUUSD", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD",
         "USD/JPY": "USDJPY", "GBP/JPY": "GBPJPY", "EUR/JPY": "EURJPY",
@@ -348,74 +365,66 @@ def biquote_candles(symbol, interval, size=100):
         response = requests.get(
             f"https://biquote.io/api/{provider_symbol}/ohlc",
             params={"interval": provider_interval, "limit": min(int(size) + 10, 1000)},
-            timeout=15
+            timeout=8
         )
         response.raise_for_status()
         payload = response.json()
         bars = payload.get("bars", [])
         if not isinstance(bars, list) or not bars:
-            return None, "Alternative feed returned no candles for " + provider_symbol
-        # Provider returns newest first. Use completed bars, oldest first.
+            return None, "BiQuote returned no candles for " + provider_symbol
+        # API is newest-first. Drop the forming candle and retain the newest closed bars.
         closed = [bar for bar in bars if not bar.get("isOpen", False)]
-        if len(closed) < 30:
-            return None, "Alternative feed has insufficient completed candles for " + provider_symbol
-        values = []
-        for bar in reversed(closed[-int(size):]):
-            values.append({
-                "time": bar.get("openTime", ""),
-                "open": float(bar["open"]),
-                "high": float(bar["high"]),
-                "low": float(bar["low"]),
-                "close": float(bar["close"])
-            })
+        selected = list(reversed(closed[:int(size)]))
+        values = [{
+            "time": bar.get("openTime", ""),
+            "open": float(bar["open"]),
+            "high": float(bar["high"]),
+            "low": float(bar["low"]),
+            "close": float(bar["close"])
+        } for bar in selected]
+        if not _valid_ohlc(values):
+            return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol
         return values, None
     except Exception as exc:
-        return None, "Alternative market feed failed: " + str(exc)
+        return None, "BiQuote market feed failed: " + str(exc)
 
 
-def td(symbol,interval,size=100):
+def td(symbol, interval, size=100):
+    """Prefer the documented public feed; use Twelve Data only as a real fallback."""
+    values, biquote_error = biquote_candles(symbol, interval, size)
+    if values:
+        return values, None
+
     key = (
         get_setting("twelve_data_key")
         or os.environ.get("TWELVE_DATA_API_KEY")
         or ""
     ).strip()
+    if not key:
+        return None, biquote_error + "; Twelve Data key not configured"
 
-    # Try Twelve Data first when configured; fall back to a second provider
-    # on invalid keys, unavailable symbols, or network/provider errors.
-    if key:
-        try:
-            r = requests.get(
-                "https://api.twelvedata.com/time_series",
-                params={
-                    "symbol":symbol,
-                    "interval":interval,
-                    "outputsize":size,
-                    "apikey":key
-                },
-                timeout=15
-            )
-            data = r.json()
-            if "values" in data:
-                values = []
-                for x in reversed(data["values"]):
-                    values.append({
-                        "time":x["datetime"],
-                        "open":float(x["open"]),
-                        "high":float(x["high"]),
-                        "low":float(x["low"]),
-                        "close":float(x["close"])
-                    })
-                return values, None
-            td_error = data.get("message", "Twelve Data returned no market data")
-        except Exception as exc:
-            td_error = str(exc)
-    else:
-        td_error = "Twelve Data key not configured"
-
-    values, fallback_error = biquote_candles(symbol, interval, size)
-    if values:
+    try:
+        response = requests.get(
+            "https://api.twelvedata.com/time_series",
+            params={"symbol": symbol, "interval": interval, "outputsize": size, "apikey": key},
+            timeout=8
+        )
+        response.raise_for_status()
+        data = response.json()
+        if "values" not in data:
+            return None, biquote_error + "; Twelve Data: " + str(data.get("message", "no candle values"))
+        values = [{
+            "time": bar["datetime"],
+            "open": float(bar["open"]),
+            "high": float(bar["high"]),
+            "low": float(bar["low"]),
+            "close": float(bar["close"])
+        } for bar in reversed(data["values"])]
+        if not _valid_ohlc(values):
+            return None, biquote_error + "; Twelve Data returned malformed or insufficient candles"
         return values, None
-    return None, "Twelve Data failed (" + td_error + "); alternative feed failed (" + str(fallback_error) + ")"
+    except Exception as exc:
+        return None, biquote_error + "; Twelve Data failed: " + str(exc)
 
 # ============================================================
 # MARKET AUX
@@ -784,7 +793,30 @@ def analyze(symbol):
         score=technical_sell
         reasons=sell
 
-    if score<72:
+    # TW Blueprint ICC is mandatory: body-based indication, correction, and
+    # continuation must all exist in the same direction. Require 4H/1H
+    # agreement and reject an opposing 15M trend. No partial setup is promoted.
+    indication = body_break(m5, direction)
+    correction_ok = correction(m5, direction)
+    continuation_ok = continuation(m5, direction)
+    higher_tf_agree = (t4 == ("BULLISH" if direction == "BUY" else "BEARISH")
+                       and t1 == ("BULLISH" if direction == "BUY" else "BEARISH"))
+    mid_tf_not_opposed = t15 != ("BEARISH" if direction == "BUY" else "BULLISH")
+    icc_state = (
+        "CONTINUATION" if indication and correction_ok and continuation_ok
+        else "INDICATION" if indication
+        else "CORRECTION" if correction_ok
+        else "RANGE / NO ICC"
+    )
+    if (score < 72 or not indication or not correction_ok or not continuation_ok
+            or not higher_tf_agree or not mid_tf_not_opposed):
+        blockers = []
+        if not indication: blockers.append("body-based indication missing")
+        if not correction_ok: blockers.append("correction/retest missing")
+        if not continuation_ok: blockers.append("continuation confirmation missing")
+        if not higher_tf_agree: blockers.append("4H and 1H trend must agree")
+        if not mid_tf_not_opposed: blockers.append("15M trend opposes setup")
+        if score < 72: blockers.append("confluence score below 72")
         return {
             "symbol":symbol,
             "status":"NO TRADE",
@@ -793,10 +825,12 @@ def analyze(symbol):
             "trend4h":t4,
             "trend1h":t1,
             "trend15m":t15,
+            "icc_state":icc_state,
             "fundamental":fund,
-            "news_sentiment":n["sentiment"],
-            "message":
-            "Insufficient TW Blueprint confluence."
+            "news_sentiment":n["sentiment"] if n["available"] else None,
+            "data_source":"BiQuote OHLC with Twelve Data fallback if configured",
+            "news_available":n["available"],
+            "message":"No signal: " + "; ".join(blockers) + "."
         }
 
     price=m5[-1]["close"]
@@ -836,9 +870,19 @@ def analyze(symbol):
         "trend4h":t4,
         "trend1h":t1,
         "trend15m":t15,
-        "fundamental":fund,
-        "news_sentiment":n["sentiment"],
-        "articles":n["articles"],
+        "icc_state":"CONTINUATION",
+        "confluence_checks":{
+            "indication":True,
+            "correction":True,
+            "continuation":True,
+            "higher_timeframes_agree":True,
+            "15m_not_opposed":True
+        },
+        "data_source":"BiQuote OHLC with Twelve Data fallback if configured",
+        "news_available":n["available"],
+        "fundamental":fund if n["available"] else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"No verified news sentiment available; sentiment excluded from scoring."},
+        "news_sentiment":n["sentiment"] if n["available"] else None,
+        "articles":n["articles"] if n["available"] else [],
         "reasons":reasons
     }
 
