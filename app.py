@@ -2228,6 +2228,11 @@ font-size:17px;
 
 }
 
+
+/* LANDING PAGE MODE: keep only the hero and access/contact request section on Home */
+body:not(.tw-nav-view) section:not(#top):not(#request){display:none!important;}
+body.tw-nav-view section{display:none!important;}
+body.tw-nav-view section.tw-nav-active{display:block!important;}
 </style>
 
 <link rel="manifest" href="/manifest.json">
@@ -7026,6 +7031,57 @@ document.addEventListener("DOMContentLoaded",function(){
   }
 })();
 
+</script>
+
+
+<script>
+/* TW Trades navigation page switcher: Home shows only landing + request/contact; other sections open from navigation. */
+(function(){
+  function initTWPageNavigation(){
+    const body=document.body;
+    const nav=document.querySelector('nav .navlinks');
+    if(!body||!nav||body.dataset.twPageNavigationReady==='1') return;
+    body.dataset.twPageNavigationReady='1';
+    function showLanding(){
+      body.classList.remove('tw-nav-view');
+      document.querySelectorAll('section.tw-nav-active').forEach(function(section){section.classList.remove('tw-nav-active');});
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    function showPage(target){
+      const element=document.getElementById(target);
+      if(!element){ window.location.hash=target; return; }
+      const section=element.closest('section');
+      if(!section){ window.location.hash=target; return; }
+      body.classList.add('tw-nav-view');
+      document.querySelectorAll('section.tw-nav-active').forEach(function(item){item.classList.remove('tw-nav-active');});
+      let current=section;
+      while(current){
+        if(current.tagName==='SECTION') current.classList.add('tw-nav-active');
+        current=current.parentElement ? current.parentElement.closest('section') : null;
+      }
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+    nav.querySelectorAll('a[href^="#"]').forEach(function(link){
+      link.addEventListener('click',function(event){
+        const target=(link.getAttribute('href')||'').slice(1);
+        if(!target) return;
+        event.preventDefault();
+        if(target==='top') showLanding();
+        else if(target==='request'){
+          showLanding();
+          setTimeout(function(){const request=document.getElementById('request');if(request)request.scrollIntoView({behavior:'smooth',block:'start'});},50);
+        } else showPage(target);
+        if(history.replaceState) history.replaceState(null,'','#'+target);
+      });
+    });
+    if(location.hash && location.hash!=='#top' && location.hash!=='#request'){
+      const target=location.hash.slice(1);
+      if(document.getElementById(target)) showPage(target);
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initTWPageNavigation);
+  else initTWPageNavigation();
+})();
 </script>
 
 </body>
