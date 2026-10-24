@@ -1135,10 +1135,11 @@ def market_data_status():
                 )
     ok_count = sum(1 for result in results.values() if result["status"] == "OK")
     closed_count = sum(1 for result in results.values() if result["status"] == "MARKET_CLOSED")
+    feed_errors = sum(1 for result in results.values() if result["status"] == "ERROR")
     overall = (
-        "MARKET_CLOSED" if market_closed
-        else "OK" if ok_count == len(results)
-        else "PARTIAL" if ok_count
+        "MARKET_CLOSED" if market_closed and feed_errors == 0
+        else "ERROR" if feed_errors == len(results)
+        else "PARTIAL" if feed_errors or ok_count
         else "ERROR"
     )
     return jsonify({
