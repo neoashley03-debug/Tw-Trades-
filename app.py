@@ -6419,6 +6419,35 @@ TikTok · @snowFx3
 </script>
 
 
+
+<script>
+/* TW SCANNER CLICK DIAGNOSTIC FALLBACK */
+(function(){
+  function bindScannerFallback(){
+    const button = document.getElementById("twRunScanner");
+    const status = document.getElementById("twScannerStatus");
+    const grid = document.getElementById("twScannerGrid");
+    if(!button || button.dataset.twFallbackBound === "1") return;
+    button.dataset.twFallbackBound = "1";
+    button.addEventListener("click", function(){
+      if(status) status.textContent = "BUTTON WORKS • CHECKING ENGINE";
+      if(grid) grid.innerHTML = '<div class="tw-live-muted">Scanner button received your tap. Connecting to the TW Trades engine…</div>';
+      if(typeof window.twRunLiveScanner === "function"){
+        Promise.resolve(window.twRunLiveScanner()).catch(function(err){
+          if(status) status.textContent = "SCANNER ERROR";
+          if(grid) grid.textContent = "Scanner failed: " + (err && err.message ? err.message : "unknown error");
+        });
+      } else {
+        if(status) status.textContent = "ENGINE SCRIPT NOT LOADED";
+        if(grid) grid.textContent = "The scanner button works, but the main scanner script did not load. Refresh the page; if this remains, the page JavaScript needs repair.";
+      }
+    });
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindScannerFallback);
+  else bindScannerFallback();
+})();
+</script>
+
 </body>
 </html>
 
