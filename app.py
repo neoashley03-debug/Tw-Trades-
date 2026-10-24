@@ -5316,16 +5316,26 @@ TikTok · @snowFx3
 
         try{
 
-            const response =
-                await fetch(
+            const controller = new AbortController();
+            const timeoutId = setTimeout(function(){
+                controller.abort();
+            }, 25000);
+
+            let response;
+            try {
+                response = await fetch(
                     "/api/scan?symbol=" +
                     encodeURIComponent(symbol) +
                     "&_=" +
                     Date.now(),
                     {
-                        cache:"no-store"
+                        cache:"no-store",
+                        signal:controller.signal
                     }
                 );
+            } finally {
+                clearTimeout(timeoutId);
+            }
 
             if(!response.ok){
                 throw new Error(
@@ -5343,10 +5353,14 @@ TikTok · @snowFx3
 
         }catch(error){
 
+            const message = error && error.name === "AbortError"
+                ? "Market data request timed out after 25 seconds. Try again."
+                : (error && error.message ? error.message : "Unknown scanner error");
+
             return {
                 symbol:symbol,
                 data:{
-                    error:error.message
+                    error:message
                 }
             };
 
@@ -5433,10 +5447,15 @@ TikTok · @snowFx3
                 });
 
 
+            const failures = results.filter(function(item){
+                return !item.data || item.data.error;
+            }).length;
+
             if(scannerStatus){
-                scannerStatus.textContent =
-                    "● LIVE • " +
-                    new Date().toLocaleTimeString();
+                scannerStatus.textContent = failures === results.length
+                    ? "ERROR • No market responses"
+                    : (failures ? "PARTIAL DATA • " + failures + " unavailable"
+                                : "● LIVE • " + new Date().toLocaleTimeString());
             }
 
         };
