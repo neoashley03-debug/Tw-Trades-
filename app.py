@@ -2747,7 +2747,7 @@ if(!qualified.length && Array.isArray(data.scan_details)){
     return item.status==="DATA ERROR" || item.status==="ERROR";
   }).slice(0,4);
   const issueHtml=issues.map(function(item){
-    return "<p class=\\"muted\\"><strong>"+String(item.symbol||"Market")+" — "+String(item.status)+":</strong> "+String(item.message||"Check market data configuration.")+"</p>";
+    return "<p class=\"muted\"><strong>"+String(item.symbol||"Market")+" — "+String(item.status)+":</strong> "+String(item.message||"Check market data configuration.")+"</p>";
   }).join("");
   const panel=document.getElementById("terminalResults");
   panel.innerHTML=
