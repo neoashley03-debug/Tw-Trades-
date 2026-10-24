@@ -1082,7 +1082,18 @@ def login():
             password.encode()
         ).hexdigest()
 
-        if hashed == get_setting("admin_password_hash"):
+        # Allow the owner to recover admin access using a private Render
+        # environment variable. On successful recovery, sync the database hash.
+        recovery_password = os.environ.get("ADMIN_PASSWORD", "")
+        if (
+            hashed == get_setting("admin_password_hash")
+            or (
+                recovery_password
+                and secrets.compare_digest(password, recovery_password)
+            )
+        ):
+            if recovery_password and secrets.compare_digest(password, recovery_password):
+                set_setting("admin_password_hash", hashed)
             session["admin"] = True
             return redirect("/admin")
 
