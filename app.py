@@ -6448,9 +6448,6 @@ TikTok · @snowFx3
 })();
 </script>
 
-</body>
-</html>
-
 <script>
 document.addEventListener(
     "DOMContentLoaded",
@@ -7027,6 +7024,9 @@ document.addEventListener("DOMContentLoaded",function(){
 })();
 
 </script>
+
+</body>
+</html>
 
 
 """
