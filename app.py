@@ -7159,6 +7159,65 @@ document.addEventListener("DOMContentLoaded",function(){
 })();
 </script>
 
+<script>
+/* Independent Academy fallback: keep lesson navigation working even if another
+   dashboard script fails to initialise. */
+(function(){
+  function initAcademyFallback(){
+    const academy=document.getElementById("academy");
+    const courseModal=document.getElementById("twAcademyModal");
+    const detailModal=document.getElementById("twLessonDetailModal");
+    const title=document.getElementById("twAcademyTitle");
+    const description=document.getElementById("twAcademyDescription");
+    const lessonsBox=document.getElementById("twAcademyLessons");
+    const detailTitle=document.getElementById("twLessonDetailTitle");
+    const detailBody=document.getElementById("twLessonDetailBody");
+    if(!academy || !courseModal || !detailModal || !lessonsBox) return;
+    if(academy.dataset.fallbackReady==="1") return;
+    academy.dataset.fallbackReady="1";
+    function close(modal){ if(modal) modal.classList.remove("open"); }
+    function openCourse(card){
+      const h=card.querySelector("h3");
+      const p=card.querySelector(".muted");
+      if(title) title.textContent=h ? h.textContent.trim() : "TW Trades course";
+      if(description) description.textContent=p ? p.textContent.trim() : "Study each lesson and complete the practice task.";
+      const items=Array.from(card.querySelectorAll(".lesson"));
+      lessonsBox.innerHTML=items.length ? items.map(function(node,i){
+        const lessonTitle=node.textContent.trim().replace(/^\\d+\\.\\s*/,"");
+        return '<button type="button" class="tw-lesson" data-fallback-lesson="'+encodeURIComponent(lessonTitle)+'" style="display:block;width:100%;text-align:left;color:inherit;background:rgba(255,255,255,.035);border:1px solid rgba(0,255,208,.18);border-radius:12px;padding:16px;margin:10px 0;cursor:pointer;"><strong style="color:#00ffd0;">Lesson '+(i+1)+'</strong><div style="margin-top:6px;">'+escapeHtml(lessonTitle)+'</div><small style="display:block;margin-top:8px;color:#9aabba;">TAP TO OPEN LESSON →</small></button>';
+      }).join("") : '<p>No lessons are listed in this course yet.</p>';
+      courseModal.classList.add("open");
+    }
+    function escapeHtml(v){return String(v).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+    function openLesson(lesson){
+      if(detailTitle) detailTitle.textContent=lesson;
+      if(detailBody) detailBody.innerHTML='<div class="tw-lesson-detail"><h3>Lesson overview</h3><p><strong>Objective:</strong> Understand '+escapeHtml(lesson.toLowerCase())+' and apply it consistently as part of a documented trading plan.</p><h3>How to study it</h3><p>Review the relevant chart examples, identify the market context, write down the evidence supporting your interpretation, and note what would invalidate it. Separate observations from assumptions.</p><h3>Practice exercise</h3><p>Open a demo chart and find at least three historical examples. Record the instrument, timeframe, conditions, entry trigger (if any), invalidation level, and outcome. Include examples where the setup did not work.</p><div class="tw-lesson-exercise"><strong>Before moving on</strong><p>Can you explain the concept in your own words and identify when not to trade it? If not, repeat the exercise.</p></div><p style="color:#9aabba;font-size:12px;">Educational content only. No setup guarantees profit. Practice on a demo account before risking money.</p></div>';
+      close(courseModal);
+      detailModal.classList.add("open");
+    }
+    academy.querySelectorAll(".card.course").forEach(function(card){
+      card.style.cursor="pointer";
+      card.setAttribute("role","button");
+      card.setAttribute("tabindex","0");
+      card.addEventListener("click",function(){openCourse(card);});
+      card.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();openCourse(card);}});
+    });
+    lessonsBox.addEventListener("click",function(e){
+      const btn=e.target.closest("[data-fallback-lesson]");
+      if(!btn) return;
+      let lesson=btn.getAttribute("data-fallback-lesson")||"";
+      try{lesson=decodeURIComponent(lesson);}catch(_){}
+      openLesson(lesson);
+    });
+    document.getElementById("twAcademyClose")?.addEventListener("click",function(){close(courseModal);});
+    document.getElementById("twLessonDetailClose")?.addEventListener("click",function(){close(detailModal);});
+    [courseModal,detailModal].forEach(function(modal){modal.addEventListener("click",function(e){if(e.target===modal) close(modal);});});
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",initAcademyFallback);
+  else initAcademyFallback();
+})();
+</script>
+
 </body>
 </html>
 
