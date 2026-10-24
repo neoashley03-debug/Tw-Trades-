@@ -4415,6 +4415,7 @@ Request access to the TW Trades ecosystem and receive the instructions directly 
 </p>
 
 <a href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
+target="_blank" rel="noopener"
 style="
 display:inline-block;
 padding:16px 32px;
@@ -4426,7 +4427,23 @@ text-decoration:none;
 margin:8px;
 box-shadow:0 0 25px rgba(0,255,208,.25);
 ">
-REQUEST ACCESS — R400
+REQUEST ACCESS — ACCOUNT 1
+</a>
+
+<a href="https://wa.me/27693118405?text=Hi%20Neo%2C%20I%20want%20to%20request%20TW%20Trades%20Public%20Access%20for%20R400.%20Please%20send%20me%20the%20payment%20and%20access%20instructions."
+target="_blank" rel="noopener"
+style="
+display:inline-block;
+padding:16px 32px;
+border-radius:14px;
+background:#101925;
+color:#00ffd0;
+border:1px solid #00ffd0;
+font-weight:900;
+text-decoration:none;
+margin:8px;
+">
+REQUEST ACCESS — ACCOUNT 2
 </a>
 
 <div style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
