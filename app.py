@@ -662,23 +662,36 @@ def analyze(symbol):
             "message":"Asset already produced a signal today."
         }
 
-    frames={}
+    # Fetch all required timeframes concurrently so four slow provider
+    # requests do not stack up and exceed the browser scanner timeout.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    for interval in ["4h","1h","15min","5min"]:
-        data,error=td(
-            ASSETS[symbol]["td"],
-            interval,
-            100
-        )
+    intervals = ["4h", "1h", "15min", "5min"]
+    frames = {}
+    errors = []
 
-        if error:
-            return {
-                "symbol":symbol,
-                "status":"DATA ERROR",
-                "message":error
-            }
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        jobs = {
+            pool.submit(td, ASSETS[symbol]["td"], interval, 100): interval
+            for interval in intervals
+        }
+        for job in as_completed(jobs):
+            interval = jobs[job]
+            try:
+                data, error = job.result()
+            except Exception as exc:
+                data, error = None, str(exc)
+            if error:
+                errors.append(interval + ": " + error)
+            else:
+                frames[interval] = data
 
-        frames[interval]=data
+    if errors:
+        return {
+            "symbol": symbol,
+            "status": "DATA ERROR",
+            "message": "Live candle data unavailable (" + "; ".join(errors) + ")"
+        }
 
     t4=trend(frames["4h"])
     t1=trend(frames["1h"])
