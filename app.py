@@ -6449,26 +6449,8 @@ TikTok · @snowFx3
 </script>
 
 <script>
-document.addEventListener(
-    "DOMContentLoaded",
-    function(){
-
-        setTimeout(
-            function(){
-
-                if(
-                    typeof window.twRunDetailedScanner ===
-                    "function"
-                ){
-                    window.twRunDetailedScanner();
-                }
-
-            },
-            1200
-        );
-
-    }
-);
+/* The older detailed scanner is hidden during homepage cleanup.
+   The visible live scanner is started only by the user's button. */
 </script>
 
 
@@ -6672,6 +6654,14 @@ document.addEventListener(
     display: block;
     padding: 12px 14px;
   }
+}
+
+/* HOMEPAGE CLEANUP: hide older duplicate terminals/scanners while retaining their code safely */
+#twRealTradingView,
+#twScannerDetails,
+#intelligence-terminal,
+#tw-live-terminal-v2 {
+  display: none !important;
 }
 
 </style>
