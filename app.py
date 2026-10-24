@@ -1052,6 +1052,72 @@ def persist_qualified_signal(signal):
     return True
 
 
+@app.route("/api/market-data/status")
+def market_data_status():
+    """Read-only live-feed diagnostic. Never generates or stores trading signals."""
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import timedelta
+
+    symbols = {
+        "XAU/USD": "XAU/USD",
+        "EUR/USD": "EUR/USD",
+        "GBP/USD": "GBP/USD",
+        "USD/JPY": "USD/JPY",
+    }
+
+    def check_one(label, provider_symbol):
+        candles, error = td(provider_symbol, "5min", 50)
+        if error or not candles:
+            return {
+                "symbol": label,
+                "status": "ERROR",
+                "source": "BiQuote public OHLC",
+                "message": error or "No completed candles returned."
+            }
+        latest = candles[-1]
+        raw_time = latest.get("time")
+        try:
+            stamp = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            age_seconds = max(0, int((datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()))
+        except (TypeError, ValueError):
+            return {
+                "symbol": label,
+                "status": "ERROR",
+                "source": "BiQuote public OHLC",
+                "message": "Latest candle has no valid UTC timestamp."
+            }
+
+        return {
+            "symbol": label,
+            "status": "OK" if age_seconds <= 1200 else "STALE",
+            "source": "BiQuote public OHLC",
+            "timeframe": "5min",
+            "completed_candles": len(candles),
+            "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
+            "candle_age_minutes": round(age_seconds / 60, 1),
+            "latest_close": latest["close"],
+            "message": "Recent completed candles received." if age_seconds <= 1200 else "Latest completed candle is older than 20 minutes."
+        }
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            label: pool.submit(check_one, label, provider_symbol)
+            for label, provider_symbol in symbols.items()
+        }
+        results = {label: future.result() for label, future in futures.items()}
+
+    ok_count = sum(1 for result in results.values() if result["status"] == "OK")
+    return jsonify({
+        "overall_status": "OK" if ok_count == len(results) else ("PARTIAL" if ok_count else "ERROR"),
+        "source": "BiQuote public OHLC feed",
+        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "checks": results,
+        "note": "Read-only diagnostics; this endpoint does not create trading signals."
+    })
+
+
 @app.route("/api/scan")
 def api_scan():
 
