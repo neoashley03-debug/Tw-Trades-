@@ -100,7 +100,18 @@ ASSETS = {
     "SOL/USD": {"group":"CRYPTO","td":"SOL/USD","news":"SOL"},
     "XRP/USD": {"group":"CRYPTO","td":"XRP/USD","news":"XRP"},
     "ADA/USD": {"group":"CRYPTO","td":"ADA/USD","news":"ADA"},
-    "DOGE/USD": {"group":"CRYPTO","td":"DOGE/USD","news":"DOGE"}
+    "DOGE/USD": {"group":"CRYPTO","td":"DOGE/USD","news":"DOGE"},
+
+    # Deriv-style synthetic indices are listed for scanner visibility.
+    # BiQuote is not assumed to support these symbols; unavailable feeds fail closed.
+    "Volatility 10 Index": {"group":"SYNTHETICS","td":"R_10","news":"R_10"},
+    "Volatility 25 Index": {"group":"SYNTHETICS","td":"R_25","news":"R_25"},
+    "Volatility 50 Index": {"group":"SYNTHETICS","td":"R_50","news":"R_50"},
+    "Volatility 75 Index": {"group":"SYNTHETICS","td":"R_75","news":"R_75"},
+    "Volatility 100 Index": {"group":"SYNTHETICS","td":"R_100","news":"R_100"},
+    "Boom 500 Index": {"group":"SYNTHETICS","td":"BOOM500","news":"BOOM500"},
+    "Crash 500 Index": {"group":"SYNTHETICS","td":"CRASH500","news":"CRASH500"},
+    "Step Index": {"group":"SYNTHETICS","td":"STP","news":"STP"}
 }
 
 COURSES = [
@@ -324,8 +335,12 @@ def fx_market_closed(now=None):
     )
 
 
-def current_session():
+def current_session(group=None):
     now = datetime.now(timezone.utc)
+    # Crypto and synthetic indices are generally available 24/7, but each
+    # broker/provider's maintenance windows still apply.
+    if group in ("CRYPTO", "SYNTHETICS"):
+        return "24/7"
     if fx_market_closed(now):
         return "OFF-SESSION"
 
@@ -398,6 +413,34 @@ def biquote_candles(symbol, interval, size=100):
         } for bar in selected]
         if not _valid_ohlc(values):
             return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol
+
+        # Fail closed on stale data while the relevant market is expected open.
+        # Crypto and synthetic indices are treated as 24/7; FX/metals/index
+        # freshness checks are suspended during the approximate weekly closure.
+        latest_time = values[-1].get("time")
+        try:
+            stamp = datetime.fromisoformat(str(latest_time).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            age_seconds = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
+            age_seconds = max(0, age_seconds)
+        except (TypeError, ValueError):
+            return None, "Latest BiQuote candle has an invalid timestamp for " + provider_symbol
+
+        group = next((item.get("group") for item in ASSETS.values()
+                      if item.get("td") == symbol), "FOREX")
+        market_expected_open = (
+            group in ("CRYPTO", "SYNTHETICS")
+            or not fx_market_closed()
+        )
+        interval_seconds = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval, 300)
+        freshness_limit = max(1200, interval_seconds * 2 + 300)
+        if market_expected_open and age_seconds > freshness_limit:
+            return None, (
+                "Stale market data rejected for " + provider_symbol +
+                ": latest completed candle is " + str(round(age_seconds / 60)) +
+                " minutes old; limit is " + str(round(freshness_limit / 60)) + " minutes."
+            )
         return values, None
     except Exception as exc:
         return None, "BiQuote market feed failed: " + str(exc)
@@ -658,7 +701,8 @@ def analyze(symbol):
     if symbol not in ASSETS:
         return {"status":"ERROR","message":"Unknown symbol"}
 
-    sess=current_session()
+    asset_group = ASSETS[symbol].get("group", "FOREX")
+    sess = current_session(asset_group)
 
     if sess=="OFF-SESSION":
         return {
