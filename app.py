@@ -317,6 +317,50 @@ def current_session():
 
 import os
 
+def biquote_candles(symbol, interval, size=100):
+    """Fallback OHLC feed. No API key is required for public read endpoints."""
+    symbol_map = {
+        "XAU/USD": "XAUUSD", "EUR/USD": "EURUSD", "GBP/USD": "GBPUSD",
+        "USD/JPY": "USDJPY", "GBP/JPY": "GBPJPY", "EUR/JPY": "EURJPY",
+        "EUR/AUD": "EURAUD", "GBP/AUD": "GBPAUD", "USD/CHF": "USDCHF",
+        "AUD/USD": "AUDUSD", "USD/CAD": "USDCAD",
+        "IXIC": "IXIC", "DJI": "DJI", "SPX": "SPX", "DAX": "DAX",
+        "FTSE": "FTSE", "VIX": "VIX",
+        "BTC/USD": "BTCUSD", "ETH/USD": "ETHUSD", "SOL/USD": "SOLUSD",
+        "XRP/USD": "XRPUSD", "ADA/USD": "ADAUSD", "DOGE/USD": "DOGEUSD"
+    }
+    interval_map = {"4h": "4h", "1h": "1h", "15min": "15m", "5min": "5m"}
+    provider_symbol = symbol_map.get(symbol, symbol.replace("/", ""))
+    provider_interval = interval_map.get(interval, interval)
+    try:
+        response = requests.get(
+            f"https://biquote.io/api/{provider_symbol}/ohlc",
+            params={"interval": provider_interval, "limit": min(int(size) + 10, 1000)},
+            timeout=15
+        )
+        response.raise_for_status()
+        payload = response.json()
+        bars = payload.get("bars", [])
+        if not isinstance(bars, list) or not bars:
+            return None, "Alternative feed returned no candles for " + provider_symbol
+        # Provider returns newest first. Use completed bars, oldest first.
+        closed = [bar for bar in bars if not bar.get("isOpen", False)]
+        if len(closed) < 30:
+            return None, "Alternative feed has insufficient completed candles for " + provider_symbol
+        values = []
+        for bar in reversed(closed[-int(size):]):
+            values.append({
+                "time": bar.get("openTime", ""),
+                "open": float(bar["open"]),
+                "high": float(bar["high"]),
+                "low": float(bar["low"]),
+                "close": float(bar["close"])
+            })
+        return values, None
+    except Exception as exc:
+        return None, "Alternative market feed failed: " + str(exc)
+
+
 def td(symbol,interval,size=100):
     key = (
         get_setting("twelve_data_key")
@@ -324,45 +368,42 @@ def td(symbol,interval,size=100):
         or ""
     ).strip()
 
-    if not key:
-        return None, "Twelve Data key not configured"
-
-
-    try:
-        r=requests.get(
-            "https://api.twelvedata.com/time_series",
-            params={
-                "symbol":symbol,
-                "interval":interval,
-                "outputsize":size,
-                "apikey":key
-            },
-            timeout=15
-        )
-
-        data=r.json()
-
-        if "values" not in data:
-            return None,data.get(
-                "message",
-                "No market data returned"
+    # Try Twelve Data first when configured; fall back to a second provider
+    # on invalid keys, unavailable symbols, or network/provider errors.
+    if key:
+        try:
+            r = requests.get(
+                "https://api.twelvedata.com/time_series",
+                params={
+                    "symbol":symbol,
+                    "interval":interval,
+                    "outputsize":size,
+                    "apikey":key
+                },
+                timeout=15
             )
+            data = r.json()
+            if "values" in data:
+                values = []
+                for x in reversed(data["values"]):
+                    values.append({
+                        "time":x["datetime"],
+                        "open":float(x["open"]),
+                        "high":float(x["high"]),
+                        "low":float(x["low"]),
+                        "close":float(x["close"])
+                    })
+                return values, None
+            td_error = data.get("message", "Twelve Data returned no market data")
+        except Exception as exc:
+            td_error = str(exc)
+    else:
+        td_error = "Twelve Data key not configured"
 
-        values=[]
-
-        for x in reversed(data["values"]):
-            values.append({
-                "time":x["datetime"],
-                "open":float(x["open"]),
-                "high":float(x["high"]),
-                "low":float(x["low"]),
-                "close":float(x["close"])
-            })
-
-        return values,None
-
-    except Exception as e:
-        return None,str(e)
+    values, fallback_error = biquote_candles(symbol, interval, size)
+    if values:
+        return values, None
+    return None, "Twelve Data failed (" + td_error + "); alternative feed failed (" + str(fallback_error) + ")"
 
 # ============================================================
 # MARKET AUX
