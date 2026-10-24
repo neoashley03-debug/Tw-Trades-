@@ -312,9 +312,24 @@ def set_setting(key,value):
 # SESSION
 # ============================================================
 
-def current_session():
-    hour=datetime.now(timezone.utc).hour
+def fx_market_closed(now=None):
+    """Approximate weekly FX/gold closure in UTC; broker holidays may differ."""
+    now = now or datetime.now(timezone.utc)
+    weekday = now.weekday()  # Monday=0, Sunday=6
+    hour = now.hour
+    return (
+        weekday == 5
+        or (weekday == 6 and hour < 22)
+        or (weekday == 4 and hour >= 21)
+    )
 
+
+def current_session():
+    now = datetime.now(timezone.utc)
+    if fx_market_closed(now):
+        return "OFF-SESSION"
+
+    hour = now.hour
     for name,(start,end) in SESSIONS.items():
         if start <= hour < end:
             return name
@@ -1108,13 +1123,31 @@ def market_data_status():
         }
         results = {label: future.result() for label, future in futures.items()}
 
+    checked_at = datetime.now(timezone.utc)
+    market_closed = fx_market_closed(checked_at)
+    if market_closed:
+        for result in results.values():
+            if result.get("status") in ("OK", "STALE"):
+                result["status"] = "MARKET_CLOSED"
+                result["message"] = (
+                    "Weekly FX/gold market closure: last Friday candle may be expected. "
+                    "Recheck during the next open market session."
+                )
     ok_count = sum(1 for result in results.values() if result["status"] == "OK")
+    closed_count = sum(1 for result in results.values() if result["status"] == "MARKET_CLOSED")
+    overall = (
+        "MARKET_CLOSED" if market_closed
+        else "OK" if ok_count == len(results)
+        else "PARTIAL" if ok_count
+        else "ERROR"
+    )
     return jsonify({
-        "overall_status": "OK" if ok_count == len(results) else ("PARTIAL" if ok_count else "ERROR"),
+        "overall_status": overall,
+        "market_closed": market_closed,
         "source": "BiQuote public OHLC feed",
-        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "checked_at_utc": checked_at.isoformat(),
         "checks": results,
-        "note": "Read-only diagnostics; this endpoint does not create trading signals."
+        "note": "Read-only diagnostics; during market closure, old candles are not by themselves proof of a feed failure. Recheck while the market is open."
     })
 
 
