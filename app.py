@@ -5379,16 +5379,12 @@ TikTok · @snowFx3
             scannerGrid.appendChild(loading);
 
 
-            const results = [];
-
-            for(const symbol of scannerAssets){
-
-                const result =
-                    await scanOne(symbol);
-
-                results.push(result);
-
-            }
+            // Run scans concurrently so one slow symbol does not freeze the whole dashboard.
+            const results = await Promise.all(
+                scannerAssets.map(function(symbol){
+                    return scanOne(symbol);
+                })
+            );
 
 
             scannerGrid.innerHTML =
@@ -6608,6 +6604,31 @@ document.addEventListener(
     min-height:360px;
   }
 }
+
+/* Mobile navigation: toggled by the command-menu button */
+@media (max-width: 900px) {
+  nav .navlinks.tw-nav-open {
+    display: flex !important;
+    position: absolute;
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    z-index: 9999;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 10px;
+    border: 1px solid rgba(0,255,208,.25);
+    border-radius: 14px;
+    background: rgba(7,12,24,.98);
+    box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+  nav .navlinks.tw-nav-open a {
+    display: block;
+    padding: 12px 14px;
+  }
+}
+
 </style>
 
 <section id="tw-live-terminal-v2">
@@ -6929,6 +6950,34 @@ document.addEventListener("DOMContentLoaded",function(){
 });
 
 })();
+
+/* TW Trades mobile navigation repair */
+(function(){
+  function initTWMobileMenu(){
+    const button = document.getElementById("twMenuButton");
+    const links = document.querySelector("nav .navlinks");
+    if(!button || !links || button.dataset.twMenuReady === "1") return;
+    button.dataset.twMenuReady = "1";
+    button.addEventListener("click", function(){
+      const isOpen = links.classList.toggle("tw-nav-open");
+      button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      button.setAttribute("aria-label", isOpen ? "Close TW Trades command menu" : "Open TW Trades command menu");
+    });
+    links.querySelectorAll("a").forEach(function(link){
+      link.addEventListener("click", function(){
+        links.classList.remove("tw-nav-open");
+        button.setAttribute("aria-expanded","false");
+        button.setAttribute("aria-label","Open TW Trades command menu");
+      });
+    });
+  }
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", initTWMobileMenu);
+  } else {
+    initTWMobileMenu();
+  }
+})();
+
 </script>
 
 
