@@ -421,7 +421,10 @@ def news(symbol):
             timeout=15
         )
 
+        r.raise_for_status()
         data=r.json()
+        if not isinstance(data,dict) or data.get("error"):
+            return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux returned an API error. Check the key and account limits in Admin."}
         articles=data.get("data",[])
 
         scores=[]
@@ -444,12 +447,12 @@ def news(symbol):
             "articles":articles[:6]
         }
 
+    except requests.Timeout:
+        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux timed out. Try again shortly."}
+    except requests.RequestException:
+        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not be reached. Check the service and API key."}
     except Exception:
-        return {
-            "available":False,
-            "sentiment":0,
-            "articles":[]
-        }
+        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not process this request."}
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -944,26 +947,41 @@ PAYLOAD:
             timeout=60
         )
 
-        data=r.json()
+        try:
+            data=r.json()
+        except ValueError:
+            data={}
 
-        text=data.get("output_text")
-
-        if text:
+        if not r.ok:
+            detail=(data.get("error") or {}).get("message") or r.text[:300] or "The AI provider rejected the request."
             return {
-                "available":True,
-                "text":text
+                "available":False,
+                "text":f"OpenAI request failed (HTTP {r.status}): {detail}"
             }
 
+        text=data.get("output_text")
+        if not text:
+            parts=[]
+            for item in data.get("output",[]):
+                for content in item.get("content",[]):
+                    if content.get("type")=="output_text" and content.get("text"):
+                        parts.append(content["text"])
+            text="\\n".join(parts).strip()
+
+        if text:
+            return {"available":True,"text":text}
+
         return {
             "available":False,
-            "text":"AI returned no text."
+            "text":"OpenAI responded but returned no readable analysis. Check the selected model and API access in Admin."
         }
 
+    except requests.Timeout:
+        return {"available":False,"text":"OpenAI timed out. Please try again shortly."}
+    except requests.RequestException as e:
+        return {"available":False,"text":f"OpenAI connection failed: {type(e).__name__}. Check Render network access and try again."}
     except Exception as e:
-        return {
-            "available":False,
-            "text":f"AI connection error: {e}"
-        }
+        return {"available":False,"text":f"AI analysis failed safely: {type(e).__name__}."}
 
 # ============================================================
 # API
@@ -3037,14 +3055,16 @@ const data=await r.json();
 
 const box=document.getElementById("news");
 
-if(!data.articles?.length){
+if(!data.available || !data.articles?.length){
+
+const message=data.message || (!data.available
+  ? "Market news is not connected. Add a valid MarketAux API key in Admin to enable live headlines and sentiment."
+  : "MarketAux returned no matching articles for this instrument.");
 
 box.innerHTML=`
 <div class="news-item">
-<h3>No current articles</h3>
-<p class="muted">
-MarketAux returned no matching articles.
-</p>
+<h3>${data.available ? "No current articles" : "Market intelligence unavailable"}</h3>
+<p class="muted">${message}</p>
 </div>`;
 
 return;
@@ -3108,8 +3128,11 @@ body:JSON.stringify(lastScan)
 );
 
 const data=await r.json();
-
-output.innerText=data.text;
+if(!r.ok){
+  output.innerText=data.text||data.message||("AI request failed (HTTP "+r.status+").");
+  return;
+}
+output.innerText=data.text||(data.available===false?"AI is unavailable. Check the OpenAI API key and model in Admin.":"No analysis text was returned.");
 
 }catch(e){
 
@@ -7113,7 +7136,7 @@ document.addEventListener("DOMContentLoaded",function(){
       }
       window.scrollTo({top:0,behavior:'smooth'});
     }
-    nav.querySelectorAll('a[href^="#"]').forEach(function(link){
+    document.querySelectorAll('a[href^="#"]').forEach(function(link){
       link.addEventListener('click',function(event){
         const target=(link.getAttribute('href')||'').slice(1);
         if(!target) return;
