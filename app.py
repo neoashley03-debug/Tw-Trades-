@@ -283,6 +283,7 @@ def init_db():
         "marketaux_key":"",
         "openai_key":"",
         "openai_model":"gpt-5.6",
+        "deriv_app_id":"",
         "admin_password_hash":hashlib.sha256(
             b"change-me"
         ).hexdigest()
@@ -449,25 +450,36 @@ def biquote_candles(symbol, interval, size=100):
 def deriv_candles(symbol, interval, size=100):
     """Fetch real OHLC candles from Deriv's public market-data WebSocket."""
     import json
+    import re
     import websocket
 
-    app_id = os.environ.get("DERIV_APP_ID", "1089").strip()
+    app_id = get_setting("deriv_app_id").strip()
+    if not app_id or not app_id.isdigit():
+        return None, "Deriv App ID is not configured. Add your own App ID in TW Control Center."
     granularity = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval)
     if not granularity:
         return None, "Unsupported Deriv candle interval: " + str(interval)
 
-    # The names/codes are verified against Deriv's public market-symbol conventions.
-    deriv_symbol = {
-        "R_10": "R_10",
-        "R_25": "R_25",
-        "R_50": "R_50",
-        "R_75": "R_75",
-        "R_100": "R_100",
-        "BOOM500": "BOOM500",
-        "CRASH500": "CRASH500",
-        "stpRNG": "stpRNG",
-    }.get(symbol, symbol)
+    aliases = {
+        "R_10": ["R_10", "Volatility 10 Index"],
+        "R_25": ["R_25", "Volatility 25 Index"],
+        "R_50": ["R_50", "Volatility 50 Index"],
+        "R_75": ["R_75", "Volatility 75 Index"],
+        "R_100": ["R_100", "Volatility 100 Index"],
+        "BOOM500": ["BOOM500", "Boom 500 Index"],
+        "CRASH500": ["CRASH500", "Crash 500 Index"],
+        "stpRNG": ["stpRNG", "Step Index"],
+        "BTC/USD": ["BTC/USD", "BTCUSD", "Bitcoin"],
+        "ETH/USD": ["ETH/USD", "ETHUSD", "Ethereum"],
+        "SOL/USD": ["SOL/USD", "SOLUSD", "Solana"],
+        "XRP/USD": ["XRP/USD", "XRPUSD", "XRP"],
+        "ADA/USD": ["ADA/USD", "ADAUSD", "Cardano"],
+        "DOGE/USD": ["DOGE/USD", "DOGEUSD", "Dogecoin"],
+    }
+    def norm(value):
+        return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
+    target_aliases = [norm(value) for value in aliases.get(symbol, [symbol])]
     ws = None
     try:
         ws = websocket.create_connection(
@@ -476,26 +488,51 @@ def deriv_candles(symbol, interval, size=100):
             enable_multithread=False
         )
         ws.send(json.dumps({
+            "active_symbols": "brief",
+            "product_type": "basic",
+            "req_id": 731
+        }))
+        active = None
+        for _ in range(8):
+            message = json.loads(ws.recv())
+            if message.get("error"):
+                return None, "Deriv symbol lookup failed: " + str(message["error"].get("message", "API error"))
+            if message.get("req_id") == 731 or message.get("msg_type") == "active_symbols":
+                active = message.get("active_symbols")
+                if isinstance(active, list):
+                    break
+        if not isinstance(active, list) or not active:
+            return None, "Deriv returned no active-symbol catalogue."
+
+        deriv_symbol = None
+        for item in active:
+            code = str(item.get("symbol", ""))
+            display = str(item.get("display_name", ""))
+            if norm(code) in target_aliases or norm(display) in target_aliases:
+                deriv_symbol = code
+                break
+        if not deriv_symbol:
+            return None, "Deriv does not currently list an active symbol matching " + str(symbol) + "."
+
+        ws.send(json.dumps({
             "ticks_history": deriv_symbol,
             "adjust_start_time": 1,
             "count": min(max(int(size), 30), 500),
             "end": "latest",
             "style": "candles",
             "granularity": granularity,
-            "req_id": 731
+            "req_id": 732
         }))
-
         response_data = None
-        for _ in range(5):
+        for _ in range(8):
             message = json.loads(ws.recv())
-            if message.get("req_id") == 731 or message.get("msg_type") == "history":
+            if message.get("error"):
+                return None, "Deriv rejected " + deriv_symbol + ": " + str(message["error"].get("message", "API error"))
+            if message.get("req_id") == 732 or message.get("msg_type") == "candles":
                 response_data = message
                 break
         if not isinstance(response_data, dict):
             return None, "Deriv did not return candle history for " + deriv_symbol
-        if response_data.get("error"):
-            error = response_data["error"]
-            return None, "Deriv rejected " + deriv_symbol + ": " + str(error.get("message", "API error"))
 
         raw_candles = response_data.get("candles", [])
         if not isinstance(raw_candles, list) or not raw_candles:
@@ -504,9 +541,8 @@ def deriv_candles(symbol, interval, size=100):
         values = []
         for candle in raw_candles:
             try:
-                epoch = int(candle["epoch"])
                 values.append({
-                    "time": datetime.fromtimestamp(epoch, timezone.utc).isoformat(),
+                    "time": datetime.fromtimestamp(int(candle["epoch"]), timezone.utc).isoformat(),
                     "open": float(candle["open"]),
                     "high": float(candle["high"]),
                     "low": float(candle["low"]),
@@ -516,13 +552,12 @@ def deriv_candles(symbol, interval, size=100):
                 return None, "Deriv returned a malformed candle for " + deriv_symbol
 
         values.sort(key=lambda item: item["time"])
-        if not _valid_ohlc(values):
+        if not _valid_ohlc(values, minimum=min(30, int(size))):
             return None, "Deriv returned malformed or insufficient completed candles for " + deriv_symbol
 
         age_seconds = max(0, (datetime.now(timezone.utc) -
                               datetime.fromisoformat(values[-1]["time"])).total_seconds())
-        interval_seconds = granularity
-        freshness_limit = max(1200, interval_seconds * 2 + 300)
+        freshness_limit = max(1200, granularity * 2 + 300)
         if age_seconds > freshness_limit:
             return None, (
                 "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
@@ -530,20 +565,19 @@ def deriv_candles(symbol, interval, size=100):
             )
         return values, None
     except Exception as exc:
-        return None, "Deriv market feed failed for " + deriv_symbol + ": " + str(exc)
+        return None, "Deriv market feed failed for " + str(symbol) + ": " + str(exc)
     finally:
         if ws is not None:
             try:
                 ws.close()
             except Exception:
                 pass
-
-
 def td(symbol, interval, size=100):
-    """Route synthetic indices to Deriv; use BiQuote for other asset groups."""
-    synthetic_symbols = {item.get("td") for item in ASSETS.values()
-                         if item.get("group") == "SYNTHETICS"}
-    if symbol in synthetic_symbols:
+    """Route Deriv-listed crypto and synthetic instruments to Deriv; keep other feeds unchanged."""
+    deriv_groups = {"CRYPTO", "SYNTHETICS"}
+    group = next((item.get("group") for item in ASSETS.values()
+                  if item.get("td") == symbol), None)
+    if group in deriv_groups:
         return deriv_candles(symbol, interval, size)
     return biquote_candles(symbol, interval, size)
 
@@ -1219,6 +1253,9 @@ def market_data_status():
         "EUR/USD": "EUR/USD",
         "GBP/USD": "GBP/USD",
         "USD/JPY": "USD/JPY",
+        "BTC/USD": "BTC/USD",
+        "Volatility 75 Index": "R_75",
+        "Boom 500 Index": "BOOM500",
     }
 
     def check_one(label, provider_symbol):
@@ -1227,7 +1264,7 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": "BiQuote public OHLC",
+                "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
                 "message": error or "No completed candles returned."
             }
         latest = candles[-1]
@@ -1241,14 +1278,14 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": "BiQuote public OHLC",
+                "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
                 "message": "Latest candle has no valid UTC timestamp."
             }
 
         return {
             "symbol": label,
             "status": "OK" if age_seconds <= 1200 else "STALE",
-            "source": "BiQuote public OHLC",
+            "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
             "timeframe": "5min",
             "completed_candles": len(candles),
             "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
@@ -1286,7 +1323,7 @@ def market_data_status():
     return jsonify({
         "overall_status": overall,
         "market_closed": market_closed,
-        "source": "BiQuote public OHLC feed",
+        "source": "Mixed feeds: BiQuote and Deriv public WebSocket",
         "checked_at_utc": checked_at.isoformat(),
         "checks": results,
         "note": "Read-only diagnostics; during market closure, old candles are not by themselves proof of a feed failure. Recheck while the market is open."
@@ -1724,7 +1761,8 @@ def admin():
         for key in [
             "marketaux_key",
             "openai_key",
-            "openai_model"
+            "openai_model",
+            "deriv_app_id"
         ]:
             value=request.form.get(key,"").strip()
 
@@ -1747,7 +1785,8 @@ def admin():
     ADMIN_HTML,
     ma="********" if get_setting("marketaux_key") else "",
     ai="********" if get_setting("openai_key") else "",
-    model=get_setting("openai_model")
+    model=get_setting("openai_model"),
+    deriv_app_id=get_setting("deriv_app_id")
     )
 
 @app.route("/admin/logout")
@@ -2089,6 +2128,13 @@ type="password">
 <input name="openai_model"
 value="{{model}}">
 
+<label>Deriv API App ID (public market data)</label>
+<input name="deriv_app_id"
+value="{{deriv_app_id}}"
+inputmode="numeric"
+placeholder="Enter your own Deriv App ID">
+<p style="color:#9eacbd;font-size:13px">Use your own application ID from Deriv API settings. No trading token is needed for public market candles.</p>
+
 <label>New Admin Password</label>
 <input name="admin_password"
 type="password">
@@ -2107,7 +2153,8 @@ type="password">
 <p>✓ Fundamental Intelligence</p>
 <p>✓ AI Analyst</p>
 <p>✓ MarketAux News</p>
-<p>✓ Public BiQuote market candles (no API key required)</p>
+<p>✓ Public BiQuote candles for supported FX, metals and indices</p>
+<p>✓ Deriv public WebSocket candles for crypto and synthetic indices</p>
 <p>✓ 6-signal daily engine</p>
 </div>
 
