@@ -269,7 +269,6 @@ def init_db():
     """)
 
     defaults = {
-        "twelve_data_key":"",
         "marketaux_key":"",
         "openai_key":"",
         "openai_model":"gpt-5.6",
@@ -390,41 +389,8 @@ def biquote_candles(symbol, interval, size=100):
 
 
 def td(symbol, interval, size=100):
-    """Prefer the documented public feed; use Twelve Data only as a real fallback."""
-    values, biquote_error = biquote_candles(symbol, interval, size)
-    if values:
-        return values, None
-
-    key = (
-        get_setting("twelve_data_key")
-        or os.environ.get("TWELVE_DATA_API_KEY")
-        or ""
-    ).strip()
-    if not key:
-        return None, biquote_error + "; Twelve Data key not configured"
-
-    try:
-        response = requests.get(
-            "https://api.twelvedata.com/time_series",
-            params={"symbol": symbol, "interval": interval, "outputsize": size, "apikey": key},
-            timeout=8
-        )
-        response.raise_for_status()
-        data = response.json()
-        if "values" not in data:
-            return None, biquote_error + "; Twelve Data: " + str(data.get("message", "no candle values"))
-        values = [{
-            "time": bar["datetime"],
-            "open": float(bar["open"]),
-            "high": float(bar["high"]),
-            "low": float(bar["low"]),
-            "close": float(bar["close"])
-        } for bar in reversed(data["values"])]
-        if not _valid_ohlc(values):
-            return None, biquote_error + "; Twelve Data returned malformed or insufficient candles"
-        return values, None
-    except Exception as exc:
-        return None, biquote_error + "; Twelve Data failed: " + str(exc)
+    """Use the public BiQuote OHLC feed only; no Twelve Data key is required."""
+    return biquote_candles(symbol, interval, size)
 
 # ============================================================
 # MARKET AUX
@@ -865,7 +831,7 @@ def analyze(symbol):
             "icc_state":icc_state,
             "fundamental":fund,
             "news_sentiment":n["sentiment"] if n["available"] else None,
-            "data_source":"BiQuote OHLC with Twelve Data fallback if configured",
+            "data_source":"BiQuote public OHLC feed",
             "news_available":n["available"],
             "message":"No signal: " + "; ".join(blockers) + "."
         }
@@ -915,7 +881,7 @@ def analyze(symbol):
             "higher_timeframes_agree":True,
             "15m_not_opposed":True
         },
-        "data_source":"BiQuote OHLC with Twelve Data fallback if configured",
+        "data_source":"BiQuote public OHLC feed",
         "news_available":n["available"],
         "fundamental":fund if n["available"] else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"No verified news sentiment available; sentiment excluded from scoring."},
         "news_sentiment":n["sentiment"] if n["available"] else None,
@@ -1404,7 +1370,6 @@ def admin():
     if request.method=="POST":
 
         for key in [
-            "twelve_data_key",
             "marketaux_key",
             "openai_key",
             "openai_model"
@@ -1428,7 +1393,6 @@ def admin():
 
     return render_template_string(
     ADMIN_HTML,
-    td="********" if get_setting("twelve_data_key") else "",
     ma="********" if get_setting("marketaux_key") else "",
     ai="********" if get_setting("openai_key") else "",
     model=get_setting("openai_model")
@@ -1759,11 +1723,6 @@ font-size:32px !important;
 
 <form method="post">
 
-<label>Twelve Data API Key</label>
-<input name="twelve_data_key"
-value="{{td}}"
-type="password">
-
 <label>MarketAux API Key</label>
 <input name="marketaux_key"
 value="{{ma}}"
@@ -1796,7 +1755,7 @@ type="password">
 <p>✓ Fundamental Intelligence</p>
 <p>✓ AI Analyst</p>
 <p>✓ MarketAux News</p>
-<p>✓ Twelve Data</p>
+<p>✓ Public BiQuote market candles (no API key required)</p>
 <p>✓ 6-signal daily engine</p>
 </div>
 
@@ -2918,7 +2877,7 @@ if(!qualified.length && Array.isArray(data.scan_details)){
     '<p class="muted">Scanned '+String(data.scanned_count||0)+' markets. Qualified setups: 0. No signals were invented.</p>'+
     '<p class="muted">'+String(summary||"No status summary returned.")+'</p>'+
     issueHtml+
-    '<p class="muted">If DATA ERROR appears, verify the Twelve Data API key in Admin. NO TRADE means the current setup did not meet the rules.</p></div>';
+    '<p class="muted">Market candles use the public BiQuote feed and require no Twelve Data key. If DATA ERROR appears, the feed may be unavailable or may not support that symbol. NO TRADE means the setup did not meet the rules.</p></div>';
 }
 
 }catch(e){
