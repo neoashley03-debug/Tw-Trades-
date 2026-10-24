@@ -2296,7 +2296,7 @@ TW<span>TRADES</span>
 <div class="navlinks">
 <a href="#top">Home</a>
 <a href="#terminal">Terminal</a>
-<a href="#intelligence">Intelligence</a><a href="#scanner">Scanner</a>
+<a href="#intelligence">Intelligence</a><a href="#scanner">Scanner</a><a href="#apex-dashboard">Apex Flow</a>
 <a href="#titan">Titan X</a>
 <a href="#yuki">Yuki</a>
 <a href="#academy">Academy</a><a href="#library">Library</a>
@@ -4369,6 +4369,33 @@ twRunTerminal();
 
 
 <!-- TW TRADES PUBLIC ACCESS -->
+
+<!-- APEX FLOW ANALYTICS EMBED -->
+<section id="apex-dashboard" style="max-width:1400px;margin:24px auto;padding:clamp(14px,3vw,30px);">
+  <div style="border:1px solid rgba(0,255,208,.18);border-radius:24px;background:linear-gradient(145deg,#07101b,#03070d);padding:clamp(16px,3vw,28px);">
+    <div style="display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:18px;">
+      <div>
+        <div style="color:#00ffd0;font-size:11px;letter-spacing:3px;font-weight:900;">CONNECTED WORKSPACE</div>
+        <h2 style="margin:8px 0;font-size:clamp(24px,4vw,36px);">Apex Flow Analytics</h2>
+        <p style="margin:0;color:#9aa9bc;line-height:1.6;">Embedded dashboard. If the provider blocks embedding, open the dashboard directly in a new tab.</p>
+      </div>
+      <a href="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:13px 18px;border-radius:11px;background:#00ffd0;color:#03100e;font-weight:900;text-decoration:none;">OPEN FULL DASHBOARD ↗</a>
+    </div>
+    <div style="position:relative;width:100%;height:min(78vh,900px);min-height:560px;overflow:hidden;border:1px solid #203348;border-radius:16px;background:#05070b;">
+      <iframe
+        src="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard"
+        title="Apex Flow Analytics dashboard"
+        loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="clipboard-read; clipboard-write; fullscreen"
+        allowfullscreen
+        style="display:block;width:100%;height:100%;border:0;background:#05070b;"
+      ></iframe>
+    </div>
+    <p style="color:#8493a8;font-size:12px;line-height:1.6;margin:12px 2px 0;">Your Apex Flow account may need to be signed in separately. The dashboard remains hosted by Base44; this embed does not transfer its data or login system into TW Trades.</p>
+  </div>
+</section>
+
 <section id="request" style="
 margin:60px auto;
 max-width:1100px;
