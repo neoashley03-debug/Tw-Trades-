@@ -567,6 +567,45 @@ def continuation(data,direction):
         and a["close"]<b["close"]
     )
 
+
+def icc_sequence(data, direction):
+    """Require indication first, then a later pullback, then continuation."""
+    if len(data) < 30 or not continuation(data, direction):
+        return False, False, False
+
+    # The last candle is reserved for continuation. Search prior candles
+    # for a body breakout, then require a pullback after that breakout.
+    end = len(data) - 1
+    start = max(20, end - 12)
+    indication_index = None
+    for i in range(start, end):
+        history = data[i-20:i]
+        candle = data[i]
+        if direction == "BUY":
+            level = max(body_high(x) for x in history)
+            broken = candle["close"] > level
+        else:
+            level = min(body_low(x) for x in history)
+            broken = candle["close"] < level
+        if broken:
+            indication_index = i
+
+    if indication_index is None:
+        return False, False, True
+
+    # At least one completed candle between indication and continuation
+    # must retrace. Do not let the final continuation candle count as pullback.
+    correction_bars = data[indication_index + 1:end]
+    if not correction_bars:
+        return True, False, True
+
+    indication_close = data[indication_index]["close"]
+    if direction == "BUY":
+        correction_ok = any(x["low"] < indication_close for x in correction_bars)
+    else:
+        correction_ok = any(x["high"] > indication_close for x in correction_bars)
+    return True, correction_ok, True
+
 def correction(data,direction):
     if len(data)<8:
         return False
@@ -796,9 +835,7 @@ def analyze(symbol):
     # TW Blueprint ICC is mandatory: body-based indication, correction, and
     # continuation must all exist in the same direction. Require 4H/1H
     # agreement and reject an opposing 15M trend. No partial setup is promoted.
-    indication = body_break(m5, direction)
-    correction_ok = correction(m5, direction)
-    continuation_ok = continuation(m5, direction)
+    indication, correction_ok, continuation_ok = icc_sequence(m5, direction)
     higher_tf_agree = (t4 == ("BULLISH" if direction == "BUY" else "BEARISH")
                        and t1 == ("BULLISH" if direction == "BUY" else "BEARISH"))
     mid_tf_not_opposed = t15 != ("BEARISH" if direction == "BUY" else "BULLISH")
