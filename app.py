@@ -301,6 +301,13 @@ def init_db():
 init_db()
 
 def get_setting(key):
+    # Render environment variables take precedence for deployment-wide settings.
+    # This avoids relying on instance-local SQLite state for the Deriv App ID.
+    if key == "deriv_app_id":
+        env_app_id = os.environ.get("DERIV_APP_ID", "").strip()
+        if env_app_id:
+            return env_app_id
+
     c=db()
     r=c.execute(
         "SELECT value FROM settings WHERE key=?",
