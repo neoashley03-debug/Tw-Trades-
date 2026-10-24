@@ -856,13 +856,80 @@ PAYLOAD:
 # API
 # ============================================================
 
+def persist_qualified_signal(signal):
+    """Save and notify Discord once for each qualified symbol per day."""
+    if signal.get("status") != "QUALIFIED":
+        return False
+
+    symbol = signal.get("symbol")
+    sess = signal.get("session")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    c = db()
+    count = c.execute(
+        "SELECT COUNT(*) n FROM signals WHERE created LIKE ?",
+        (today + "%",)
+    ).fetchone()["n"]
+
+    session_count = c.execute(
+        "SELECT COUNT(*) n FROM signals WHERE created LIKE ? AND session=?",
+        (today + "%", sess)
+    ).fetchone()["n"]
+
+    already_saved = c.execute(
+        "SELECT 1 FROM signals WHERE created LIKE ? AND symbol=? LIMIT 1",
+        (today + "%", symbol)
+    ).fetchone()
+
+    if count >= MAX_DAILY or session_count >= MAX_PER_SESSION or already_saved:
+        c.close()
+        return False
+
+    reason = "; ".join(signal.get("reasons", [])) or "TW Blueprint ICC qualified"
+    c.execute("""
+        INSERT INTO signals(
+            created,symbol,session,direction,
+            entry,stop,tp1,tp2,score,reason
+        )
+        VALUES(?,?,?,?,?,?,?,?,?,?)
+    """, (
+        datetime.now(timezone.utc).isoformat(),
+        symbol,
+        sess,
+        signal.get("direction"),
+        signal.get("entry"),
+        signal.get("stop"),
+        signal.get("tp1"),
+        signal.get("tp2"),
+        signal.get("score"),
+        reason
+    ))
+    c.commit()
+    c.close()
+
+    send_discord_signal({
+        "symbol": symbol,
+        "session": sess,
+        "direction": signal.get("direction"),
+        "entry": signal.get("entry"),
+        "stop": signal.get("stop"),
+        "tp1": signal.get("tp1"),
+        "tp2": signal.get("tp2"),
+        "score": signal.get("score"),
+        "reason": reason
+    })
+    return True
+
+
 @app.route("/api/scan")
 def api_scan():
 
     symbol=request.args.get("symbol")
 
     if symbol:
-        return jsonify(analyze(symbol))
+        result = analyze(symbol)
+        persist_qualified_signal(result)
+        return jsonify(result)
 
     results=[]
 
@@ -870,6 +937,7 @@ def api_scan():
         r=analyze(s)
 
         if r.get("status")=="QUALIFIED":
+            persist_qualified_signal(r)
             results.append(r)
 
     results.sort(
