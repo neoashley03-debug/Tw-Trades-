@@ -12,6 +12,38 @@ INSTAGRAM_URL = "https://instagram.com/ashleysnowfx"
 TIKTOK_URL = "https://tiktok.com/@snowFx3"
 REQUEST_URL = "https://tw-trades-1.onrender.com/#request"
 
+def send_discord_signal(signal):
+    webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        app.logger.warning("Discord webhook is not configured.")
+        return False
+
+    message = (
+        f"📈 **TW TRADES | NEW SIGNAL**\n"
+        f"**Symbol:** {signal['symbol']}\n"
+        f"**Direction:** {signal['direction']}\n"
+        f"**Session:** {signal['session']}\n"
+        f"**Entry:** {signal['entry']}\n"
+        f"**Stop-loss:** {signal['stop']}\n"
+        f"**TP1:** {signal['tp1']}\n"
+        f"**TP2:** {signal['tp2']}\n"
+        f"**Score:** {signal['score']}\n"
+        f"**Analysis:** {signal['reason']}\n"
+        f"⚠️ Trading involves risk. Verify the setup before acting."
+    )
+
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"content": message},
+            timeout=8
+        )
+        response.raise_for_status()
+        return True
+    except Exception:
+        app.logger.exception("Discord signal delivery failed.")
+        return False
+
 app = Flask(__name__)
 @app.route("/robots.txt")
 def robots_txt():
