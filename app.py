@@ -963,10 +963,26 @@ def commit():
         "TW Blueprint ICC qualified"
     ))
 
+    
     c.commit()
     c.close()
 
-    return jsonify({"ok":True})
+    signal = {
+        "symbol": symbol,
+        "session": sess,
+        "direction": data.get("direction"),
+        "entry": data.get("entry"),
+        "stop": data.get("stop"),
+        "tp1": data.get("tp1"),
+        "tp2": data.get("tp2"),
+        "score": data.get("score"),
+        "reason": "TW Blueprint ICC qualified"
+    }
+
+    send_discord_signal(signal)
+
+    return jsonify({"ok": True})
+
 
 # ============================================================
 # ADMIN
