@@ -1293,6 +1293,99 @@ def market_data_status():
     })
 
 
+@app.route("/api/market-data/universe-status")
+def market_data_universe_status():
+    """Read-only feed check across representative forex, crypto, index and Deriv synthetic markets."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    symbols = {
+        "XAU/USD": {"provider": "XAU/USD", "group": "METALS"},
+        "EUR/USD": {"provider": "EUR/USD", "group": "FOREX"},
+        "BTC/USD": {"provider": "BTC/USD", "group": "CRYPTO"},
+        "ETH/USD": {"provider": "ETH/USD", "group": "CRYPTO"},
+        "NASDAQ": {"provider": "IXIC", "group": "INDICES"},
+        "US30": {"provider": "DJI", "group": "INDICES"},
+        "Volatility 10 Index": {"provider": "R_10", "group": "SYNTHETICS"},
+        "Volatility 50 Index": {"provider": "R_50", "group": "SYNTHETICS"},
+        "Volatility 75 Index": {"provider": "R_75", "group": "SYNTHETICS"},
+        "Volatility 100 Index": {"provider": "R_100", "group": "SYNTHETICS"},
+        "Boom 500 Index": {"provider": "BOOM500", "group": "SYNTHETICS"},
+        "Crash 500 Index": {"provider": "CRASH500", "group": "SYNTHETICS"},
+        "Step Index": {"provider": "stpRNG", "group": "SYNTHETICS"}
+    }
+
+    def check_one(label, item):
+        candles, error = td(item["provider"], "5min", 50)
+        source = "Deriv public WebSocket" if item["group"] == "SYNTHETICS" else "BiQuote public OHLC"
+        result = {
+            "symbol": label,
+            "group": item["group"],
+            "source": source,
+            "timeframe": "5min"
+        }
+        if error or not candles:
+            result.update({
+                "status": "ERROR",
+                "message": error or "No completed candles returned."
+            })
+            return result
+
+        latest = candles[-1]
+        try:
+            stamp = datetime.fromisoformat(str(latest["time"]).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.astimezone(timezone.utc)
+            age_seconds = max(0, int((datetime.now(timezone.utc) - stamp).total_seconds()))
+        except (KeyError, TypeError, ValueError):
+            result.update({"status": "ERROR", "message": "Latest candle has an invalid timestamp."})
+            return result
+
+        market_expected_open = item["group"] in ("CRYPTO", "SYNTHETICS") or not fx_market_closed()
+        if not market_expected_open:
+            status = "MARKET_CLOSED"
+            message = "Weekly closure expected for this market group; recheck during its next open session."
+        elif age_seconds > 1200:
+            status = "STALE"
+            message = "Latest completed candle is older than 20 minutes."
+        else:
+            status = "OK"
+            message = "Recent completed candles received."
+
+        result.update({
+            "status": status,
+            "completed_candles": len(candles),
+            "latest_candle_utc": stamp.isoformat(),
+            "candle_age_minutes": round(age_seconds / 60, 1),
+            "latest_close": latest["close"],
+            "message": message
+        })
+        return result
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {label: pool.submit(check_one, label, item) for label, item in symbols.items()}
+        checks = {label: future.result() for label, future in futures.items()}
+
+    statuses = [item["status"] for item in checks.values()]
+    if all(status == "OK" for status in statuses):
+        overall = "OK"
+    elif any(status == "ERROR" for status in statuses):
+        overall = "ERROR" if all(status == "ERROR" for status in statuses) else "PARTIAL"
+    elif any(status == "STALE" for status in statuses):
+        overall = "STALE"
+    elif all(status == "MARKET_CLOSED" for status in statuses):
+        overall = "MARKET_CLOSED"
+    else:
+        overall = "PARTIAL"
+
+    return jsonify({
+        "overall_status": overall,
+        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+        "note": "Read-only diagnostics. OK means recent candles were returned by the named provider; it does not guarantee execution prices match another broker."
+    })
+
+
 @app.route("/api/scan")
 def api_scan():
 
