@@ -2729,17 +2729,39 @@ box.innerHTML=
 
 try{
 
-const r=await fetch("/api/scan");
+const r=await fetch("/api/scan",{cache:"no-store"});
+if(!r.ok) throw new Error("Scanner HTTP "+r.status);
 const data=await r.json();
 
 lastScan=data;
 
-renderSignals(data.results||[]);
+const qualified=data.results||[];
+renderSignals(qualified);
+
+if(!qualified.length && Array.isArray(data.scan_details)){
+  const counts=data.status_counts||{};
+  const summary=Object.keys(counts).map(function(k){
+    return k+": "+counts[k];
+  }).join(" · ");
+  const issues=data.scan_details.filter(function(item){
+    return item.status==="DATA ERROR" || item.status==="ERROR";
+  }).slice(0,4);
+  const issueHtml=issues.map(function(item){
+    return "<p class=\\"muted\\"><strong>"+String(item.symbol||"Market")+" — "+String(item.status)+":</strong> "+String(item.message||"Check market data configuration.")+"</p>";
+  }).join("");
+  const panel=document.getElementById("terminalResults");
+  panel.innerHTML=
+    '<div class="signal"><h3>SCANNER DIAGNOSTICS</h3>'+
+    '<p class="muted">Scanned '+String(data.scanned_count||0)+' markets. Qualified setups: 0. No signals were invented.</p>'+
+    '<p class="muted">'+String(summary||"No status summary returned.")+'</p>'+
+    issueHtml+
+    '<p class="muted">If DATA ERROR appears, verify the Twelve Data API key in Admin. NO TRADE means the current setup did not meet the rules.</p></div>';
+}
 
 }catch(e){
 
 box.innerHTML=
-'<div class="signal">DATA CONNECTION ERROR</div>';
+'<div class="signal"><h3>DATA CONNECTION ERROR</h3><p class="muted">'+String(e.message||e)+'</p></div>';
 
 }
 
