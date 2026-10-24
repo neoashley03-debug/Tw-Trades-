@@ -256,6 +256,18 @@ def init_db():
     )
     """)
 
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        access_level TEXT NOT NULL DEFAULT 'free',
+        access_status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL
+    )
+    """)
+
     defaults = {
         "twelve_data_key":"",
         "marketaux_key":"",
@@ -2324,8 +2336,8 @@ The Autonomy of Success education.
 
 <div class="buttons">
 
-<a class="btn primary" href="#terminal">
-LAUNCH TERMINAL
+<a class="btn primary" href="/access">
+LAUNCH · LOGIN / REGISTER
 </a>
 
 <a class="btn" href="#academy">
@@ -7089,6 +7101,60 @@ document.addEventListener("DOMContentLoaded",function(){
 
 
 """
+
+
+@app.route("/access", methods=["GET", "POST"])
+def user_access():
+    import html
+    message = ""
+    if request.method == "POST":
+        action = request.form.get("action", "login")
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        name = request.form.get("display_name", "").strip()
+        c = db()
+        if action == "register":
+            if not name or "@" not in email or len(password) < 8:
+                message = "Enter your name, a valid email, and a password of at least 8 characters."
+            else:
+                try:
+                    c.execute("INSERT INTO users(email,password_hash,display_name,access_level,access_status,created_at) VALUES(?,?,?,'free','active',?)",
+                        (email, hashlib.sha256(password.encode()).hexdigest(), name, datetime.now(timezone.utc).isoformat()))
+                    c.commit()
+                except sqlite3.IntegrityError:
+                    message = "That email is already registered. Please log in."
+        if not message and action == "login":
+            user = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            digest = hashlib.sha256(password.encode()).hexdigest()
+            if user and secrets.compare_digest(user["password_hash"], digest):
+                session["user_id"] = user["id"]
+                session["user_email"] = user["email"]
+                session["user_name"] = user["display_name"]
+                c.close()
+                return redirect("/access")
+            message = "Email or password is incorrect."
+        if not message and action == "register":
+            user = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+            if user:
+                session["user_id"] = user["id"]
+                session["user_email"] = user["email"]
+                session["user_name"] = user["display_name"]
+                c.close()
+                return redirect("/access")
+        c.close()
+    if session.get("user_id"):
+        name = html.escape(session.get("user_name", "Trader"))
+        email = html.escape(session.get("user_email", ""))
+        return """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>TW Trades Free Access</title><style>body{margin:0;padding:24px;background:#05070b;color:#edf3fb;font-family:Arial}.box{max-width:700px;margin:8vh auto;padding:28px;background:#0b1119;border:1px solid #203348;border-radius:20px}p{color:#aab7c8;line-height:1.7}.btn{display:inline-block;padding:14px 18px;margin:6px;border-radius:10px;background:#00ffd0;color:#03100e;font-weight:bold;text-decoration:none}.alt{background:#101925;color:white;border:1px solid #334155}</style></head><body><main class="box"><p style="color:#00ffd0;font-weight:bold">TW TRADES · FREE MEMBER AREA</p><h1>Welcome, """ + name + """</h1><p>Your free account is active. Free access is limited to platform orientation and TW Blueprint learning. The full scanner, advanced intelligence, Titan X and Yuki require owner approval.</p><h2>Request full access</h2><p>Ask for access or approval directly through WhatsApp. Never send your password.</p><a class="btn" target="_blank" rel="noopener" href="https://wa.me/27697343252?text=Hi%20Neo%2C%20I%20registered%20for%20TW%20Trades%20with%20email%20""" + email + """%20and%20would%20like%20to%20request%20premium%20access.">REQUEST APPROVAL ON WHATSAPP</a><a class="btn alt" href="/">BACK TO WEBSITE</a><a class="btn alt" href="/access/logout">LOG OUT</a></main></body></html>"""
+    safe_message = html.escape(message)
+    return """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>TW Trades Login / Register</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#05070b;color:#edf3fb;font-family:Arial}.box{width:100%;max-width:440px;padding:28px;border:1px solid #203348;border-radius:20px;background:#0b1119}p{color:#aab7c8;line-height:1.6}label{display:block;margin:12px 0 6px}input{width:100%;padding:13px;background:#05070b;color:white;border:1px solid #29384b;border-radius:9px}.btn{width:100%;padding:14px;margin-top:16px;background:#00ffd0;color:#03100e;font-weight:bold;border:0;border-radius:10px}.links a{color:#00ffd0;margin-right:16px}.err{color:#ffb7c1;margin:12px 0}</style></head><body><main class="box"><p style="color:#00ffd0;font-weight:bold;letter-spacing:2px">TW TRADES</p><h1>Login / Register</h1><p>Register for limited free access. Premium features require a request and approval through WhatsApp.</p><div class="links"><a href="/access">LOGIN</a><a href="/access?mode=register">REGISTER</a></div><div class="err">""" + safe_message + """</div><form method="post"><label>Name (registration only)</label><input name="display_name" autocomplete="name"><label>Email</label><input name="email" type="email" autocomplete="email" required><label>Password (8+ characters for registration)</label><input name="password" type="password" minlength="8" autocomplete="current-password" required><div style="display:flex;gap:8px"><button class="btn" name="action" value="login">LOG IN</button><button class="btn" name="action" value="register">REGISTER FREE</button></div></form><p><a style="color:#00ffd0" href="/">← Back to landing page</a></p></main></body></html>"""
+
+@app.route("/access/logout")
+def user_access_logout():
+    for key in ("user_id", "user_email", "user_name"):
+        session.pop(key, None)
+    return redirect("/access")
+
 
 @app.route("/")
 def home():
