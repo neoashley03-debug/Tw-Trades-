@@ -927,28 +927,45 @@ def api_scan():
     symbol=request.args.get("symbol")
 
     if symbol:
+        if symbol not in ASSETS:
+            return jsonify({
+                "symbol":symbol,
+                "status":"ERROR",
+                "message":"Unsupported symbol. Choose a symbol listed by TW Trades."
+            }), 400
         result = analyze(symbol)
         persist_qualified_signal(result)
         return jsonify(result)
 
     results=[]
+    scan_details=[]
 
-    for s in ASSETS:
-        r=analyze(s)
+    for asset in ASSETS:
+        result=analyze(asset)
+        scan_details.append(result)
 
-        if r.get("status")=="QUALIFIED":
-            persist_qualified_signal(r)
-            results.append(r)
+        if result.get("status")=="QUALIFIED":
+            persist_qualified_signal(result)
+            results.append(result)
 
     results.sort(
         key=lambda x:x.get("score",0),
         reverse=True
     )
 
+    counts={}
+    for result in scan_details:
+        state=result.get("status","UNKNOWN")
+        counts[state]=counts.get(state,0)+1
+
     return jsonify({
         "session":current_session(),
         "daily_maximum":MAX_DAILY,
-        "results":results[:MAX_DAILY]
+        "qualified_count":len(results),
+        "scanned_count":len(scan_details),
+        "status_counts":counts,
+        "results":results[:MAX_DAILY],
+        "scan_details":scan_details
     })
 
 @app.route("/api/news")
@@ -2747,10 +2764,22 @@ const data=await r.json();
 
 lastScan={
 results:data.status==="QUALIFIED"
-?[data]:[]
+?[data]:[],
+diagnostic:data
 };
 
-renderSignals(lastScan.results);
+if(data.status==="QUALIFIED"){
+  renderSignals(lastScan.results);
+}else{
+  const detail=data.message||"The scanner did not qualify this setup.";
+  const score=(data.score!==undefined)?("<p class=\"muted\">Score: "+data.score+"/100</p>"):"";
+  const trends=[
+    data.trend4h?("4H: "+data.trend4h):"",
+    data.trend1h?("1H: "+data.trend1h):"",
+    data.trend15m?("15M: "+data.trend15m):""
+  ].filter(Boolean).join(" · ");
+  box.innerHTML='<div class="signal"><h3>'+String(data.status||"NO TRADE")+'</h3><p class="muted">'+String(detail)+'</p>'+score+(trends?'<p class="muted">'+trends+'</p>':"")+'</div>';
+}
 
 loadNews(symbol);
 
@@ -6722,53 +6751,40 @@ window.twLiveScan=async function(){
       throw new Error(data.error);
     }
 
-    const bias=
-      data.bias ??
-      data.signal ??
-      data.direction ??
-      "NEUTRAL";
+    const scanStatus=data.status||"UNKNOWN";
+    const bias=data.direction||data.bias||"NEUTRAL";
+    const explanation=data.message||(
+      scanStatus==="QUALIFIED"
+        ? "Qualified setup returned by the scanner."
+        : "No qualified setup. Review the scanner status and data requirements."
+    );
 
     twText("tw-live-symbol",twLiveAsset);
-    twText("tw-live-bias",bias);
+    twText("tw-live-bias",scanStatus==="QUALIFIED"?bias:scanStatus);
     twText(
       "tw-live-signal",
-      data.signal_detail ??
-      data.reason ??
-      data.message ??
-      "Live scanner response received."
+      scanStatus==="QUALIFIED"
+        ? ((data.reasons||[]).join("; ")||"Setup qualified")
+        : explanation
     );
 
     twText("tw-live-support",data.support);
     twText("tw-live-resistance",data.resistance);
-
     twText("tw-live-indication",data.indication);
     twText("tw-live-correction",data.correction);
     twText("tw-live-continuation",data.continuation);
-
-    twText(
-      "tw-live-technical",
-      data.technical ??
-      data.technical_analysis
-    );
-
-    twText(
-      "tw-live-fundamental",
-      data.fundamental ??
-      data.fundamental_analysis
-    );
-
-    twText(
-      "tw-live-sentiment",
-      data.sentiment ??
-      data.sentiment_analysis
-    );
+    twText("tw-live-technical",data.technical||data.technical_analysis||(
+      [data.trend4h&&("4H "+data.trend4h),data.trend1h&&("1H "+data.trend1h),data.trend15m&&("15M "+data.trend15m)].filter(Boolean).join(" · ")
+    ));
+    twText("tw-live-fundamental",data.fundamental?.bias||data.fundamental||data.fundamental_analysis);
+    twText("tw-live-sentiment",data.news_sentiment!==undefined?data.news_sentiment:data.sentiment||data.sentiment_analysis);
 
     twText(
       "tw-live-message",
-      "Live scanner response received for "+twLiveAsset+"."
+      twLiveAsset+" — "+scanStatus+": "+explanation
     );
 
-    if(status) status.textContent="● LIVE";
+    if(status) status.textContent=scanStatus==="QUALIFIED"?"● QUALIFIED":scanStatus==="DATA ERROR"?"DATA ERROR":"● SCANNER ONLINE";
 
   }catch(error){
 
