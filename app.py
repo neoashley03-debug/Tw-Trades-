@@ -1303,21 +1303,25 @@ def market_data_status():
 
     checked_at = datetime.now(timezone.utc)
     market_closed = fx_market_closed(checked_at)
+    fx_metal_symbols = {"XAU/USD", "EUR/USD", "GBP/USD", "USD/JPY"}
     if market_closed:
-        for result in results.values():
-            if result.get("status") in ("OK", "STALE"):
+        for label, result in results.items():
+            # Only apply the weekly FX/gold closure to those markets.
+            # Crypto and Deriv synthetic indices must still be checked 24/7.
+            if label in fx_metal_symbols and result.get("status") in ("OK", "STALE"):
                 result["status"] = "MARKET_CLOSED"
                 result["message"] = (
                     "Weekly FX/gold market closure: last Friday candle may be expected. "
                     "Recheck during the next open market session."
                 )
     ok_count = sum(1 for result in results.values() if result["status"] == "OK")
-    closed_count = sum(1 for result in results.values() if result["status"] == "MARKET_CLOSED")
     feed_errors = sum(1 for result in results.values() if result["status"] == "ERROR")
+    closed_count = sum(1 for result in results.values() if result["status"] == "MARKET_CLOSED")
     overall = (
-        "MARKET_CLOSED" if market_closed and feed_errors == 0
-        else "ERROR" if feed_errors == len(results)
-        else "PARTIAL" if feed_errors or ok_count
+        "ERROR" if feed_errors == len(results)
+        else "PARTIAL" if feed_errors or closed_count
+        else "OK" if ok_count == len(results)
+        else "PARTIAL" if ok_count
         else "ERROR"
     )
     return jsonify({
@@ -1326,7 +1330,7 @@ def market_data_status():
         "source": "Mixed feeds: BiQuote and Deriv public WebSocket",
         "checked_at_utc": checked_at.isoformat(),
         "checks": results,
-        "note": "Read-only diagnostics; during market closure, old candles are not by themselves proof of a feed failure. Recheck while the market is open."
+        "note": "Read-only diagnostics; FX/gold candles may be old during the weekly closure, but crypto and Deriv synthetic markets are checked independently."
     })
 
 
