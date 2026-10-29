@@ -1654,49 +1654,66 @@ def api_blueprint():
 
 @app.route("/api/scan")
 def api_scan():
-
-    symbol=request.args.get("symbol")
+    """Scan one instrument or the full supported universe without serially blocking the page."""
+    symbol = request.args.get("symbol", "").strip()
 
     if symbol:
         if symbol not in ASSETS:
             return jsonify({
-                "symbol":symbol,
-                "status":"ERROR",
-                "message":"Unsupported symbol. Choose a symbol listed by TW Trades."
+                "symbol": symbol,
+                "status": "ERROR",
+                "message": "Unsupported symbol. Choose a symbol listed by TW Trades."
             }), 400
         result = analyze(symbol)
         persist_qualified_signal(result)
         return jsonify(result)
 
-    results=[]
-    scan_details=[]
+    # Each instrument requests four timeframes. Limit outer concurrency to
+    # avoid opening an excessive number of provider connections at once.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    for asset in ASSETS:
-        result=analyze(asset)
-        scan_details.append(result)
+    assets = list(ASSETS.keys())
+    by_asset = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        jobs = {pool.submit(analyze, asset): asset for asset in assets}
+        for job in as_completed(jobs):
+            asset = jobs[job]
+            try:
+                by_asset[asset] = job.result()
+            except Exception as exc:
+                by_asset[asset] = {
+                    "symbol": asset,
+                    "status": "ERROR",
+                    "message": "Scanner analysis failed safely: " + type(exc).__name__
+                }
 
-        if result.get("status")=="QUALIFIED":
-            persist_qualified_signal(result)
-            results.append(result)
+    # Restore configured asset order for predictable UI results.
+    scan_details = [by_asset[asset] for asset in assets]
+    qualified = [item for item in scan_details if item.get("status") == "QUALIFIED"]
+    qualified.sort(key=lambda item: item.get("score", 0), reverse=True)
 
-    results.sort(
-        key=lambda x:x.get("score",0),
-        reverse=True
-    )
+    # Persist qualified results sequentially so daily/session limits remain authoritative.
+    saved = []
+    for item in qualified:
+        if persist_qualified_signal(item):
+            saved.append(item)
 
-    counts={}
-    for result in scan_details:
-        state=result.get("status","UNKNOWN")
-        counts[state]=counts.get(state,0)+1
+    counts = {}
+    for item in scan_details:
+        state = item.get("status", "UNKNOWN")
+        counts[state] = counts.get(state, 0) + 1
 
     return jsonify({
-        "session":current_session(),
-        "daily_maximum":MAX_DAILY,
-        "qualified_count":len(results),
-        "scanned_count":len(scan_details),
-        "status_counts":counts,
-        "results":results[:MAX_DAILY],
-        "scan_details":scan_details
+        "session": current_session(),
+        "daily_maximum": MAX_DAILY,
+        "qualified_count": len(qualified),
+        "saved_count": len(saved),
+        "scanned_count": len(scan_details),
+        "status_counts": counts,
+        "results": qualified[:MAX_DAILY],
+        "scan_details": scan_details,
+        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "note": "Only setups returned as QUALIFIED by the existing TW Blueprint rules are listed as qualified. Missing or stale market data is not replaced with estimates."
     })
 
 @app.route("/api/news")
@@ -8231,7 +8248,332 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   window.loadNews(picker.value||"XAU/USD");
 })();
 </script>"""
-    page = page.replace("</body>", script + "\n</body>", 1)
+    repairScript = r"""<script id="tw-functional-repair-layer">
+(function(){
+  "use strict";
+  const $ = function(id){ return document.getElementById(id); };
+  const selectedAsset = function(){
+    return window.twCurrentAsset || ($("tw-terminal-symbol") && $("tw-terminal-symbol").textContent) || "XAU/USD";
+  };
+  const setText = function(id,value){
+    const el=$(id);
+    if(el) el.textContent = value === null || value === undefined || value === "" ? "Unavailable" : String(value);
+  };
+  const safe = function(value){
+    return String(value === null || value === undefined || value === "" ? "—" : value);
+  };
+  async function getJSON(url, timeoutMs){
+    const controller = new AbortController();
+    const timer = setTimeout(function(){ controller.abort(); }, timeoutMs || 30000);
+    try{
+      const response = await fetch(url, {cache:"no-store",headers:{Accept:"application/json"},signal:controller.signal});
+      let data = {};
+      try{ data = await response.json(); }catch(_e){ throw new Error("Server returned unreadable JSON."); }
+      if(!response.ok) throw new Error(data.message || data.error || ("HTTP " + response.status));
+      return data;
+    }catch(error){
+      if(error && error.name === "AbortError") throw new Error("Request timed out. The market-data provider may be slow or unavailable.");
+      throw error;
+    }finally{ clearTimeout(timer); }
+  }
+  function addLine(parent,label,value){
+    const line=document.createElement("div");
+    line.className="line";
+    const left=document.createElement("span"); left.textContent=label;
+    const right=document.createElement("b"); right.textContent=safe(value);
+    line.appendChild(left); line.appendChild(right); parent.appendChild(line);
+  }
+  function renderOne(result, parent){
+    const card=document.createElement("article");
+    card.className="signal";
+    const heading=document.createElement("h3");
+    heading.textContent=safe(result.symbol) + " · " + safe(result.status || "UNKNOWN");
+    card.appendChild(heading);
+    if(result.status==="QUALIFIED"){
+      const direction=document.createElement("p");
+      direction.className=(result.direction==="BUY"?"buy":"sell");
+      direction.textContent=safe(result.direction)+" · Score "+safe(result.score)+"/100";
+      card.appendChild(direction);
+      addLine(card,"Session",result.session);
+      addLine(card,"Entry",result.entry);
+      addLine(card,"Stop-loss",result.stop);
+      addLine(card,"TP1",result.tp1);
+      addLine(card,"TP2",result.tp2);
+    }else{
+      addLine(card,"Score",result.score === undefined ? "—" : result.score+"/100");
+    }
+    addLine(card,"ICC state",result.icc_state || "Not confirmed");
+    addLine(card,"4H trend",result.trend4h);
+    addLine(card,"1H trend",result.trend1h);
+    addLine(card,"15M trend",result.trend15m);
+    addLine(card,"Data source",result.data_source);
+    const note=document.createElement("p");
+    note.className="muted";
+    note.textContent=result.message || ((result.status==="QUALIFIED") ? "Setup passed the current TW Blueprint rules." : "No qualified setup returned.");
+    card.appendChild(note);
+    parent.appendChild(card);
+  }
+  function renderScanResults(data, targetId){
+    const box=$(targetId);
+    if(!box) return;
+    box.replaceChildren();
+    const items=Array.isArray(data.results)?data.results:[];
+    if(items.length){
+      items.forEach(function(item){ renderOne(item,box); });
+      return;
+    }
+    const diagnostic=document.createElement("article");
+    diagnostic.className="signal";
+    const title=document.createElement("h3");
+    title.textContent="No qualified setups";
+    diagnostic.appendChild(title);
+    const summary=document.createElement("p");
+    summary.className="muted";
+    const counts=data.status_counts || {};
+    const countText=Object.keys(counts).map(function(k){return k+": "+counts[k];}).join(" · ");
+    summary.textContent="Scanned "+safe(data.scanned_count || 0)+" instruments. "+(countText || "No status summary returned.")+". The engine does not create a signal when required data or ICC confirmation is missing.";
+    diagnostic.appendChild(summary);
+    const errors=(data.scan_details || []).filter(function(item){return item.status==="DATA ERROR" || item.status==="ERROR";}).slice(0,5);
+    errors.forEach(function(item){
+      const p=document.createElement("p"); p.className="muted";
+      p.textContent=safe(item.symbol)+": "+safe(item.message); diagnostic.appendChild(p);
+    });
+    box.appendChild(diagnostic);
+  }
+
+  window.scan = async function(){
+    const box=$("terminalResults");
+    if(box) box.textContent="Scanning supported markets using the TW Trades engine…";
+    try{
+      const data=await getJSON("/api/scan?_="+Date.now(),60000);
+      window.lastScan=data;
+      renderScanResults(data,"terminalResults");
+      const status=$("twScannerStatus");
+      if(status) status.textContent="SCAN COMPLETE · "+safe(data.scanned_count)+" MARKETS";
+      if(typeof window.loadNews==="function") window.loadNews(selectedAsset());
+    }catch(error){
+      if(box){box.replaceChildren();const p=document.createElement("p");p.textContent="Scanner unavailable: "+error.message;box.appendChild(p);}
+      setText("twScannerStatus","ERROR");
+    }
+  };
+  window.scanSymbol = async function(symbol){
+    window.twCurrentAsset=symbol;
+    setText("tw-terminal-symbol",symbol);
+    const box=$("terminalResults");
+    if(box) box.textContent="Requesting live analysis for "+symbol+"…";
+    try{
+      const data=await getJSON("/api/scan?symbol="+encodeURIComponent(symbol)+"&_="+Date.now(),30000);
+      window.lastScan={results:data.status==="QUALIFIED"?[data]:[],diagnostic:data};
+      if(box){box.replaceChildren();renderOne(data,box);}
+      window.updateTWAnalysisPanels(data);
+      if(typeof window.loadNews==="function") window.loadNews(symbol);
+      return data;
+    }catch(error){
+      if(box) box.textContent="Analysis unavailable for "+symbol+": "+error.message;
+      setText("tw-terminal-status","DATA ERROR");
+      setText("twScannerStatus","DATA ERROR");
+      throw error;
+    }
+  };
+  window.updateTWAnalysisPanels = function(data){
+    const fundamental=data.fundamental || {};
+    const checks=data.confluence_checks || {};
+    setText("tw-terminal-status",data.status==="QUALIFIED"?"● QUALIFIED":"● "+safe(data.status || "CHECKED"));
+    setText("tw-engine-message",data.message || ("Analysis returned for "+safe(data.symbol)));
+    setText("tw-bias",data.direction || data.status || "NO TRADE");
+    setText("tw-signal",data.status==="QUALIFIED" ? data.direction+" · "+safe(data.score)+"/100" : (data.status || "NO TRADE"));
+    setText("tw-session",data.session);
+    setText("tw-indication",data.indication ? "Confirmed" : "Not confirmed");
+    setText("tw-correction",data.correction ? "Confirmed" : "Not confirmed");
+    setText("tw-continuation",data.continuation ? "Confirmed" : "Not confirmed");
+    setText("tw-tech",["4H "+safe(data.trend4h),"1H "+safe(data.trend1h),"15M "+safe(data.trend15m)].join(" · "));
+    setText("tw-fund",fundamental.bias || "Unavailable");
+    setText("tw-sentiment",data.news_available ? "Headlines available; sentiment not assumed" : "Unavailable");
+    setText("tw-support",data.latest_close === undefined ? "Not returned by engine" : data.latest_close);
+    setText("tw-resistance",data.atr === undefined ? "Not returned by engine" : "ATR "+data.atr);
+    setText("twScanBias",data.direction || data.status || "NO TRADE");
+    setText("twScanSupport",data.latest_close === undefined ? "Not returned" : data.latest_close);
+    setText("twScanResistance",data.atr === undefined ? "Not returned" : "ATR "+data.atr);
+    setText("twScanEngine",data.status || "CHECKED");
+    setText("twScanIndication",data.indication ? "Body-based indication confirmed" : "Body-based indication missing");
+    setText("twScanCorrection",data.correction ? "Correction/retest confirmed" : "Correction/retest missing");
+    setText("twScanContinuation",data.continuation ? "ICC continuation confirmed" : "ICC continuation missing");
+    setText("twScanTechnical","4H: "+safe(data.trend4h)+"; 1H: "+safe(data.trend1h)+"; 15M: "+safe(data.trend15m)+"; ICC: "+safe(data.icc_state));
+    setText("twScanFundamental",fundamental.bias ? fundamental.bias+" · "+safe(fundamental.impact) : "Unavailable");
+    setText("twScanSentiment",data.news_available ? "News feed available; not a verified sentiment score" : "Unavailable");
+  };
+  window.twRunTerminal = async function(){
+    try{ await window.scanSymbol(selectedAsset()); }
+    catch(_e){ /* Visible error already rendered by scanSymbol. */ }
+  };
+  window.twRunDetailedScanner = async function(){
+    try{ await window.scanSymbol(selectedAsset()); }
+    catch(_e){ /* Visible error already rendered by scanSymbol. */ }
+  };
+  window.runAI = async function(){
+    const output=$("aiOutput");
+    const payload=window.lastScan;
+    if(!payload){if(output)output.textContent="Run a market scan first.";return;}
+    if(output)output.textContent="AI analyst is processing the returned market evidence…";
+    try{
+      const controller=new AbortController();
+      const timer=setTimeout(function(){controller.abort();},65000);
+      let response;
+      try{
+        response=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(payload),cache:"no-store",signal:controller.signal});
+      }finally{clearTimeout(timer);}
+      let data={};try{data=await response.json();}catch(_e){throw new Error("AI endpoint returned unreadable data.");}
+      if(!response.ok)throw new Error(data.text||data.message||("AI HTTP "+response.status));
+      if(output)output.textContent=data.text || "AI analysis unavailable. Check the OpenAI key and selected model in TW Control Center.";
+    }catch(error){
+      if(output)output.textContent="AI analysis unavailable: "+(error.name==="AbortError"?"request timed out":error.message)+". Check the OpenAI key/model in TW Control Center; no AI result is being assumed.";
+    }
+  };
+  window.twRunLiveScanner = async function(){
+    const grid=$("twScannerGrid");
+    const status=$("twScannerStatus");
+    const button=$("twRunScanner");
+    const symbols=["XAU/USD","EUR/USD","GBP/USD","USD/JPY","NASDAQ","BTC/USD"];
+    if(button) button.disabled=true;
+    if(status) status.textContent="SCANNING 6 MARKETS…";
+    if(grid) grid.textContent="Requesting current analysis for six core markets. Provider errors will be shown explicitly.";
+    try{
+      const results=await Promise.all(symbols.map(async function(symbol){
+        try{return {symbol:symbol,data:await getJSON("/api/scan?symbol="+encodeURIComponent(symbol)+"&_="+Date.now(),30000)};}
+        catch(error){return {symbol:symbol,error:error.message};}
+      }));
+      if(grid){
+        grid.replaceChildren();
+        results.forEach(function(item){
+          if(item.error){
+            const card=document.createElement("article");card.className="tw-scan-row";
+            const title=document.createElement("strong");title.textContent=item.symbol+" · DATA UNAVAILABLE";card.appendChild(title);
+            const msg=document.createElement("p");msg.className="tw-live-muted";msg.textContent=item.error;card.appendChild(msg);grid.appendChild(card);return;
+          }
+          const data=item.data;
+          const card=document.createElement("article");card.className="tw-scan-row";
+          card.style.cursor="pointer";
+          card.addEventListener("click",function(){window.twCurrentAsset=item.symbol;window.twSelectAsset && window.twSelectAsset(item.symbol);});
+          const title=document.createElement("strong");title.textContent=item.symbol+" · "+safe(data.status);card.appendChild(title);
+          const detail=document.createElement("p");detail.className="tw-live-muted";
+          detail.textContent=data.status==="QUALIFIED" ? safe(data.direction)+" · "+safe(data.score)+"/100 · Entry "+safe(data.entry)+" · SL "+safe(data.stop)+" · TP1 "+safe(data.tp1) : (data.message || "No qualified setup.");
+          card.appendChild(detail);
+          const meta=document.createElement("p");meta.className="tw-live-muted";
+          meta.textContent="ICC: "+safe(data.icc_state)+" · 4H "+safe(data.trend4h)+" · 1H "+safe(data.trend1h)+" · 15M "+safe(data.trend15m);
+          card.appendChild(meta);grid.appendChild(card);
+        });
+      }
+      const fails=results.filter(function(item){return item.error || (item.data && (item.data.status==="DATA ERROR" || item.data.status==="ERROR"));}).length;
+      if(status) status.textContent=fails===results.length?"ERROR · ALL FEEDS UNAVAILABLE":(fails?"PARTIAL DATA · "+fails+" unavailable":"SCAN COMPLETE · "+new Date().toLocaleTimeString());
+      window.lastScan={results:results.filter(function(item){return item.data;}).map(function(item){return item.data;})};
+    }finally{if(button)button.disabled=false;}
+  };
+
+  // Rebind scanner controls to the corrected renderer rather than the legacy
+  // callback that expected fields the API never returned.
+  const runButton=$("twRunScanner");
+  if(runButton){
+    const replacement=runButton.cloneNode(true);runButton.replaceWith(replacement);
+    replacement.addEventListener("click",function(){window.twRunLiveScanner().catch(function(e){setText("twScannerStatus","ERROR");if($("twScannerGrid"))$("twScannerGrid").textContent=e.message;});});
+  }
+  const clearButton=$("twClearScanner");
+  if(clearButton){
+    const replacement=clearButton.cloneNode(true);clearButton.replaceWith(replacement);
+    replacement.addEventListener("click",function(){if($("twScannerGrid"))$("twScannerGrid").textContent="Scanner cleared. Press RUN LIVE SCAN to request fresh data.";setText("twScannerStatus","READY");});
+  }
+
+  // The older Apex iframe is hosted by another provider; offer a dependable
+  // reload action and visible fallback without pretending the remote frame is integrated.
+  const apex=$("apex-dashboard");
+  if(apex){
+    const frame=apex.querySelector("iframe");
+    const header=apex.querySelector("h2");
+    if(header && frame && ! $("twApexEmbedStatus")){
+      const status=document.createElement("p");status.id="twApexEmbedStatus";status.className="muted";
+      status.style.cssText="margin:8px 0 14px;font-size:13px;";
+      status.textContent="Apex Flow is hosted separately. If the panel stays blank, use OPEN FULL DASHBOARD; browser security on the provider side can prevent embedding.";
+      header.parentElement.appendChild(status);
+      const reload=document.createElement("button");reload.type="button";reload.textContent="RELOAD EMBED";
+      reload.style.cssText="margin-top:8px;margin-right:8px;";
+      reload.addEventListener("click",function(){status.textContent="Reloading the external Apex Flow page…";frame.src="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard?tw_reload="+Date.now();});
+      status.appendChild(document.createTextNode(" "));
+      status.appendChild(reload);
+    }
+  }
+
+  // Make Titan X a working front-end for the existing real scanner and news APIs.
+  const titan=$("titan");
+  if(titan && !$("twTitanLivePanel")){
+    const panel=document.createElement("div");panel.id="twTitanLivePanel";panel.className="card";panel.style.marginTop="18px";
+    const title=document.createElement("h3");title.textContent="Titan X · Live Intelligence Console";panel.appendChild(title);
+    const description=document.createElement("p");description.className="muted";description.textContent="Run real TW Trades analysis for one instrument. This console uses the current server feed; it does not create mock prices or signals.";panel.appendChild(description);
+    const row=document.createElement("div");row.className="controls";
+    const select=document.createElement("select");select.id="twTitanSymbol";
+    ["XAU/USD","EUR/USD","GBP/USD","USD/JPY","NASDAQ","BTC/USD","Volatility 75 Index","Boom 500 Index"].forEach(function(symbol){const option=document.createElement("option");option.value=symbol;option.textContent=symbol;select.appendChild(option);});
+    const run=document.createElement("button");run.type="button";run.textContent="RUN TITAN ANALYSIS";
+    row.appendChild(select);row.appendChild(run);panel.appendChild(row);
+    const output=document.createElement("div");output.id="twTitanOutput";output.className="tw-intel-output";output.textContent="Choose a market and run analysis.";panel.appendChild(output);
+    run.addEventListener("click",async function(){
+      run.disabled=true;output.textContent="Requesting real market data and TW Blueprint analysis…";
+      try{
+        const data=await getJSON("/api/blueprint?symbol="+encodeURIComponent(select.value)+"&_="+Date.now(),30000);
+        output.textContent="Status: "+safe(data.status)+"\nDirection: "+safe(data.direction)+"\nScore: "+safe(data.score)+"\nICC: "+safe(data.icc_state)+"\n4H / 1H / 15M: "+safe(data.trend4h)+" / "+safe(data.trend1h)+" / "+safe(data.trend15m)+"\nData source: "+safe(data.data_source)+"\nNews: "+(data.news_available?"available":"unavailable")+"\n"+safe(data.message);
+      }catch(error){output.textContent="Titan X analysis unavailable: "+error.message;}
+      finally{run.disabled=false;}
+    });
+    titan.appendChild(panel);
+  }
+
+  // Add searchable, persistent progress tracking to the existing education library.
+  const library=$("library");
+  if(library && !$("twLibraryTools")){
+    const details=Array.from(library.querySelectorAll("details"));
+    const tools=document.createElement("div");tools.id="twLibraryTools";tools.className="card";tools.style.margin="20px 0";
+    const label=document.createElement("label");label.htmlFor="twLibrarySearch";label.textContent="SEARCH LESSONS";label.style.display="block";label.style.fontWeight="800";label.style.marginBottom="8px";tools.appendChild(label);
+    const search=document.createElement("input");search.id="twLibrarySearch";search.type="search";search.placeholder="Try: gold, ICC, CPI, risk, candlesticks";search.style.width="100%";search.style.marginBottom="12px";tools.appendChild(search);
+    const summary=document.createElement("p");summary.id="twLibraryProgress";summary.className="muted";tools.appendChild(summary);
+    const reset=document.createElement("button");reset.type="button";reset.textContent="RESET LEARNING PROGRESS";tools.appendChild(reset);
+    library.insertBefore(tools,library.children[2] || null);
+    const key="twTradesLibraryCompletedV1";
+    function readProgress(){try{return JSON.parse(localStorage.getItem(key)||"[]");}catch(_e){return [];}}
+    function writeProgress(items){try{localStorage.setItem(key,JSON.stringify(items));}catch(_e){}}
+    function paintProgress(){
+      const done=readProgress();
+      summary.textContent=done.length+" of "+details.length+" learning modules marked complete on this device.";
+      details.forEach(function(detail,index){
+        const old=detail.querySelector(".tw-library-complete");
+        if(old)old.remove();
+        const button=document.createElement("button");button.type="button";button.className="tw-library-complete";button.style.marginTop="12px";
+        button.textContent=done.indexOf(index)>=0?"✓ MODULE COMPLETED · UNMARK":"MARK MODULE COMPLETE";
+        button.addEventListener("click",function(){
+          const current=readProgress();const position=current.indexOf(index);
+          if(position>=0)current.splice(position,1);else current.push(index);
+          writeProgress(current);paintProgress();
+        });
+        detail.querySelector("div")?.appendChild(button);
+      });
+    }
+    search.addEventListener("input",function(){
+      const query=search.value.trim().toLowerCase();
+      details.forEach(function(detail){
+        detail.style.display=!query || detail.textContent.toLowerCase().includes(query) ? "" : "none";
+        if(query && detail.style.display!=="none")detail.open=true;
+      });
+    });
+    reset.addEventListener("click",function(){writeProgress([]);paintProgress();});
+    paintProgress();
+  }
+
+  // Allow the existing home/menu buttons to remain functional, and make sure
+  // the primary terminal has a real initial state instead of false "LIVE" labels.
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",function(){window.twRunTerminal();});
+  }else{
+    window.twRunTerminal();
+  }
+})();
+</script>"""
+    page = page.replace("</body>", script + "\n" + repairScript + "\n</body>", 1)
     return page
 
 
