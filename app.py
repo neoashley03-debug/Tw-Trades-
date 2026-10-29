@@ -3605,7 +3605,13 @@ if(data.status==="QUALIFIED"){
     data.trend1h?("1H: "+data.trend1h):"",
     data.trend15m?("15M: "+data.trend15m):""
   ].filter(Boolean).join(" · ");
-  box.innerHTML='<div class="signal"><h3>'+String(data.status||"NO TRADE")+'</h3><p class="muted">'+String(detail)+'</p>'+score+(trends?'<p class="muted">'+trends+'</p>':"")+'</div>';
+  const checks=data.confluence_checks||{};
+  const icc='<p class="muted"><strong>TW Blueprint ICC:</strong> '+String(data.icc_state||"NOT CONFIRMED")+
+    ' · Indication '+(checks.indication?"✓":"—")+
+    ' · Correction '+(checks.correction?"✓":"—")+
+    ' · Continuation '+(checks.continuation?"✓":"—")+'</p>';
+  box.innerHTML='<div class="signal"><h3>'+String(data.status||"NO TRADE")+'</h3><p class="muted">'+String(detail)+'</p>'+score+(trends?'<p class="muted">'+trends+'</p>':"")+icc+
+    '<p class="muted">Source: '+String(data.data_source||"Not confirmed")+'</p></div>';
 }
 
 loadNews(symbol);
