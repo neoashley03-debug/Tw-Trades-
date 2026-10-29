@@ -602,6 +602,8 @@ def td(symbol, interval, size=100):
 def news(symbol):
     """Fetch real Yahoo Finance RSS headlines. Headlines are not treated as sentiment."""
     import xml.etree.ElementTree as ET
+    import html
+    import re
     from urllib.parse import urlencode
     from email.utils import parsedate_to_datetime
 
@@ -665,6 +667,9 @@ def news(symbol):
             except (TypeError, ValueError, OverflowError):
                 pass
             description = (item.findtext("description") or "").strip()
+            # RSS descriptions can contain HTML; return plain text to the UI.
+            description = html.unescape(re.sub(r"<[^>]*>", " ", description))
+            description = re.sub(r"\s+", " ", description).strip()
             articles.append({
                 "title": title, "url": url, "description": description,
                 "snippet": description, "published_at": published,
