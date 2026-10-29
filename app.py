@@ -596,102 +596,102 @@ def td(symbol, interval, size=100):
     return biquote_candles(symbol, interval, size)
 
 # ============================================================
-# MARKET NEWS — GDELT DOC API (no API key required)
+# MARKET NEWS — YAHOO FINANCE RSS (no API key required)
 # ============================================================
 
 def news(symbol):
-    """Fetch current headlines from GDELT. News headlines are not treated as sentiment."""
+    """Fetch real Yahoo Finance RSS headlines. Headlines are not treated as sentiment."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import urlencode
+    from email.utils import parsedate_to_datetime
+
     if symbol not in ASSETS:
         return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "Unsupported instrument."}
+                "articles": [], "source": "Yahoo Finance", "message": "Unsupported instrument."}
 
-    # Human-readable terms produce more relevant results than broker-specific symbols.
-    queries = {
-        "XAU/USD": '(gold OR bullion OR "precious metals")',
-        "EUR/USD": '(euro OR EURUSD OR "European Central Bank")',
-        "GBP/USD": '(sterling OR GBPUSD OR "Bank of England")',
-        "USD/JPY": '(yen OR USDJPY OR "Bank of Japan")',
-        "GBP/JPY": '(sterling OR yen OR GBPJPY)',
-        "EUR/JPY": '(euro OR yen OR EURJPY)',
-        "EUR/AUD": '(euro OR Australian dollar OR EURAUD)',
-        "GBP/AUD": '(sterling OR Australian dollar OR GBPAUD)',
-        "USD/CHF": '(Swiss franc OR USDCHF OR SNB)',
-        "AUD/USD": '(Australian dollar OR AUDUSD OR RBA)',
-        "USD/CAD": '(Canadian dollar OR USDCAD OR Bank of Canada)',
-        "NASDAQ": '(Nasdaq OR technology stocks OR Nasdaq-100)',
-        "US30": '("Dow Jones" OR Dow30 OR DJIA)',
-        "S&P 500": '("S&P 500" OR SP500 OR "US stocks")',
-        "DAX40": '(DAX OR "German stocks")',
-        "FTSE100": '(FTSE OR "UK stocks")',
-        "VIX": '(VIX OR "market volatility")',
-        "BTC/USD": '(Bitcoin OR BTC OR cryptocurrency)',
-        "ETH/USD": '(Ethereum OR ETH OR cryptocurrency)',
-        "SOL/USD": '(Solana OR SOL cryptocurrency)',
-        "XRP/USD": '(XRP OR Ripple cryptocurrency)',
-        "ADA/USD": '(Cardano OR ADA cryptocurrency)',
-        "DOGE/USD": '(Dogecoin OR DOGE cryptocurrency)',
-        "Volatility 10 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 25 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 50 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 75 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 100 Index": '("synthetic indices" OR Deriv)',
-        "Boom 500 Index": '("synthetic indices" OR Deriv)',
-        "Crash 500 Index": '("synthetic indices" OR Deriv)',
-        "Step Index": '("synthetic indices" OR Deriv)'
+    # Yahoo Finance ticker symbols used for symbol-specific headline feeds.
+    yahoo_symbols = {
+        "XAU/USD": "GC=F",
+        "EUR/USD": "EURUSD=X",
+        "GBP/USD": "GBPUSD=X",
+        "USD/JPY": "JPY=X",
+        "GBP/JPY": "GBPJPY=X",
+        "EUR/JPY": "EURJPY=X",
+        "EUR/AUD": "EURAUD=X",
+        "GBP/AUD": "GBPAUD=X",
+        "USD/CHF": "CHF=X",
+        "AUD/USD": "AUDUSD=X",
+        "USD/CAD": "CAD=X",
+        "NASDAQ": "^IXIC",
+        "US30": "^DJI",
+        "S&P 500": "^GSPC",
+        "DAX40": "^GDAXI",
+        "FTSE100": "^FTSE",
+        "VIX": "^VIX",
+        "BTC/USD": "BTC-USD",
+        "ETH/USD": "ETH-USD",
+        "SOL/USD": "SOL-USD",
+        "XRP/USD": "XRP-USD",
+        "ADA/USD": "ADA-USD",
+        "DOGE/USD": "DOGE-USD"
     }
-    query = queries.get(symbol, ASSETS[symbol].get("news", symbol))
+    ticker = yahoo_symbols.get(symbol)
+    if not ticker:
+        return {
+            "available": False, "sentiment": 0, "sentiment_available": False,
+            "articles": [], "source": "Yahoo Finance",
+            "message": "Yahoo Finance does not provide a mapped news ticker for this synthetic instrument. News is unavailable; no sentiment inferred."
+        }
+
+    feed_url = "https://feeds.finance.yahoo.com/rss/2.0/headline?" + urlencode({
+        "s": ticker, "region": "US", "lang": "en-US"
+    })
     try:
         response = requests.get(
-            "https://api.gdeltproject.org/api/v2/doc/doc",
-            params={
-                "query": query,
-                "mode": "ArtList",
-                "format": "json",
-                "maxrecords": 10,
-                "sort": "HybridRel"
-            },
-            timeout=12,
-            headers={"User-Agent": "TW-Trades-Intelligence/1.0"}
+            feed_url, timeout=12,
+            headers={"User-Agent": "Mozilla/5.0 TW-Trades-Intelligence/1.0"}
         )
         response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise ValueError("GDELT returned an unexpected response.")
-        rows = payload.get("articles", [])
+        root = ET.fromstring(response.content)
         articles = []
-        for row in rows[:10]:
-            if not isinstance(row, dict):
-                continue
-            title = str(row.get("title") or "").strip()
-            url = str(row.get("url") or "").strip()
+        for item in root.findall(".//item")[:10]:
+            title = (item.findtext("title") or "").strip()
+            url = (item.findtext("link") or "").strip()
             if not title or not url.startswith(("https://", "http://")):
                 continue
+            published = (item.findtext("pubDate") or "").strip()
+            try:
+                published = parsedate_to_datetime(published).isoformat() if published else ""
+            except (TypeError, ValueError, OverflowError):
+                pass
+            description = (item.findtext("description") or "").strip()
             articles.append({
-                "title": title,
-                "url": url,
-                "description": "",
-                "snippet": "",
-                "published_at": row.get("seendate", ""),
-                "source": row.get("domain", "GDELT")
+                "title": title, "url": url, "description": description,
+                "snippet": description, "published_at": published,
+                "source": "Yahoo Finance"
             })
         return {
-            "available": True,
+            "available": bool(articles),
             "sentiment": 0,
             "sentiment_available": False,
             "articles": articles,
-            "source": "GDELT",
-            "message": "Headlines from GDELT. Sentiment scoring is not supplied by this source."
+            "source": "Yahoo Finance",
+            "message": (
+                "Yahoo Finance headlines loaded. Headlines are not verified sentiment scores."
+                if articles else
+                "Yahoo Finance returned no headlines for this ticker. No sentiment inferred."
+            )
         }
     except requests.Timeout:
         return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news request timed out. Retry shortly."}
-    except (requests.RequestException, ValueError):
+                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news request timed out. Retry shortly."}
+    except (requests.RequestException, ET.ParseError, ValueError):
         return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news is temporarily unavailable. Technical analysis remains separate."}
+                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news is temporarily unavailable. Technical analysis remains separate."}
     except Exception:
-        app.logger.exception("GDELT news processing failed.")
+        app.logger.exception("Yahoo Finance news processing failed.")
         return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news could not be processed."}
+                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news could not be processed."}
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -839,7 +839,7 @@ def fundamental_view(sent):
             "bias":"POSITIVE",
             "impact":"HIGH",
             "description":
-            "Recent GDELT entity sentiment is materially positive."
+            "Recent headline sentiment is not automatically scored."
         }
 
     if sent>=0.10:
@@ -855,7 +855,7 @@ def fundamental_view(sent):
             "bias":"NEGATIVE",
             "impact":"HIGH",
             "description":
-            "Recent GDELT entity sentiment is materially negative."
+            "Recent headline sentiment is not automatically scored."
         }
 
     if sent<=-0.10:
@@ -1096,7 +1096,7 @@ def analyze(symbol):
                 "15m_not_opposed": mid_tf_not_opposed
             },
             "fundamental":fund,
-            "news_source":n.get("source", "GDELT"),
+            "news_source":n.get("source", "Yahoo Finance"),
             "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
             "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
             "news_available":n["available"],
@@ -1151,7 +1151,7 @@ def analyze(symbol):
         "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
         "news_available":n["available"],
         "fundamental":fund,
-        "news_source":n.get("source", "GDELT"),
+        "news_source":n.get("source", "Yahoo Finance"),
         "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
         "articles":n["articles"] if n["available"] else [],
         "reasons":reasons
@@ -1537,7 +1537,7 @@ def api_blueprint():
         "latest_close": result.get("latest_close"),
         "atr": result.get("atr"),
         "data_source": result.get("data_source"),
-        "news_source": result.get("news_source", "GDELT"),
+        "news_source": result.get("news_source", "Yahoo Finance"),
         "news_available": result.get("news_available", False),
         "fundamental": result.get("fundamental", {"bias":"UNAVAILABLE","impact":"UNKNOWN"}),
         "message": result.get("message", "Analysis completed.")
@@ -2268,7 +2268,7 @@ type="password">
 <p>✓ Autonomy of Success Academy</p>
 <p>✓ Fundamental Intelligence</p>
 <p>✓ AI Analyst</p>
-<p>✓ GDELT financial/news headlines (no API key required; sentiment not fabricated)</p>
+<p>✓ Yahoo Finance RSS headlines (no API key required; sentiment not fabricated)</p>
 <p>✓ Public BiQuote candles for supported FX, metals and indices</p>
 <p>✓ Deriv public WebSocket candles for crypto and synthetic indices</p>
 <p>✓ 6-signal daily engine</p>
@@ -3245,7 +3245,7 @@ and entity sentiment.
 <div class="news" id="news">
 
 <div class="news-item">
-<h3>GDELT Market News</h3>
+<h3>Yahoo Finance Market News</h3>
 <p class="muted">
 Select an instrument to load current financial
 news and sentiment.
@@ -3749,8 +3749,8 @@ const box=document.getElementById("news");
 if(!data.available || !data.articles?.length){
 
 const message=data.message || (!data.available
-  ? "Live news is temporarily unavailable from GDELT. Retry shortly; no sentiment is inferred from headlines."
-  : "GDELT returned no matching current headlines for this instrument.");
+  ? "Live news is temporarily unavailable from Yahoo Finance. Retry shortly; no sentiment is inferred from headlines."
+  : "Yahoo Finance returned no matching current headlines for this instrument.");
 
 box.innerHTML=`
 <div class="news-item">
@@ -3767,7 +3767,7 @@ box.innerHTML=data.articles.map(a=>`
 <div class="news-item">
 
 <span class="tag">
-${(a.source||data.source||"GDELT").replace(/[<>]/g,"")}
+${(a.source||data.source||"Yahoo Finance").replace(/[<>]/g,"")}
 </span>
 
 <h3>
@@ -3957,7 +3957,7 @@ through the connected market-data infrastructure.
 <div class="tw-intel">
 <strong>◈ Market News</strong>
 <span>
-Financial-news headlines powered by GDELT. Headlines are not sentiment scores.
+Financial-news headlines powered by Yahoo Finance. Headlines are not sentiment scores.
 news service.
 </span>
 </div>
