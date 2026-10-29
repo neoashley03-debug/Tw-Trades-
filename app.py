@@ -7978,10 +7978,156 @@ def user_access_logout():
     return redirect("/access")
 
 
+def apply_tw_dashboard_enhancements(page):
+    """Additive responsive design and Yahoo Finance headlines UI."""
+    style = r"""<style id="tw-dashboard-organized-upgrade">
+:root{--tw-accent:#d6ad55;--tw-border:rgba(148,169,196,.19);--tw-muted:#9cabb9}
+html{scroll-padding-top:94px}
+body{background:radial-gradient(ellipse at 16% 0%,rgba(55,72,95,.2),transparent 40%),radial-gradient(ellipse at 90% 8%,rgba(214,173,85,.055),transparent 28%),#080b10;color:#f4f6f9}
+nav{background:rgba(8,11,16,.94);border-bottom-color:rgba(214,173,85,.24)}
+.logo span,.kicker{color:var(--tw-accent)}
+.eyebrow{color:#f0d69c;border-color:rgba(214,173,85,.28);background:rgba(214,173,85,.055)}
+.eyebrow:before{background:var(--tw-accent);box-shadow:0 0 13px rgba(214,173,85,.6)}
+.gradient{background:linear-gradient(100deg,#fff 0%,#f0d69c 48%,#d6ad55 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.navlinks{gap:4px;flex-wrap:wrap}
+.navlinks a:hover,.navlinks a:focus-visible{border-color:rgba(214,173,85,.22);background:rgba(214,173,85,.08)}
+.navlinks a[href="/access"]{background:var(--tw-accent);border-color:var(--tw-accent);color:#15110a}
+.navlinks a[href="/access"]:hover{background:#f0d69c;border-color:#f0d69c;color:#15110a}
+.btn.primary{background:var(--tw-accent);border-color:var(--tw-accent);color:#15110a;box-shadow:0 8px 26px rgba(214,173,85,.12)}
+.btn.primary:hover{background:#f0d69c;border-color:#f0d69c}
+.btn:hover,button:hover{border-color:rgba(214,173,85,.55)}
+.card:hover{border-color:rgba(214,173,85,.28)}
+.tag{background:rgba(214,173,85,.08);border-color:rgba(214,173,85,.18);color:#f0d69c}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--tw-accent);outline-offset:3px}
+#intelligence .news-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 18px;padding:16px;border:1px solid rgba(214,173,85,.2);border-radius:15px;background:rgba(8,13,20,.75)}
+#intelligence .news-controls label{font-size:12px;font-weight:800;letter-spacing:.07em;color:#c9d5df}
+#intelligence #tw-news-symbol{min-width:190px;max-width:100%;padding:11px 12px;border:1px solid #344453;border-radius:10px;background:#0a1118;color:#f4f6f9}
+#intelligence #tw-news-refresh{background:var(--tw-accent);border-color:var(--tw-accent);color:#15110a;font-weight:800}
+#intelligence #tw-news-status{flex:1 1 100%;color:var(--tw-muted);font-size:12px;line-height:1.6}
+#intelligence #tw-news-count{margin-left:auto;color:#f0d69c;font-size:12px}
+#intelligence .news{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+#intelligence .news-item{min-width:0;border-color:#293847;border-radius:15px;padding:18px;background:linear-gradient(145deg,rgba(16,25,34,.96),rgba(8,13,20,.96))}
+#intelligence .news-item h3{font-size:16px;line-height:1.45;overflow-wrap:anywhere}
+#intelligence .news-item a{color:#f4f6f9}
+#intelligence .news-item .tw-news-meta{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#64dfaa;line-height:1.5}
+#intelligence .news-item .tw-news-description{font-size:13px;line-height:1.7;overflow-wrap:anywhere;color:#aebbc7}
+#intelligence .news-item .tw-news-link{display:inline-block;margin-top:8px;color:var(--tw-accent);font-size:12px;font-weight:800;text-decoration:none}
+#intelligence .tw-news-note{font-size:12px;line-height:1.65;color:#8291a0;margin-top:16px}
+@media(max-width:760px){#intelligence .news{grid-template-columns:1fr}#intelligence .news-controls{padding:13px}#intelligence #tw-news-symbol{flex:1 1 100%;width:100%;min-width:0}#intelligence #tw-news-refresh{width:100%}#intelligence #tw-news-count{margin-left:0}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>"""
+    page = page.replace("</head>", style + "\n</head>", 1)
+    controls = """<div class="news-controls">
+<label for="tw-news-symbol">MARKET</label>
+<select id="tw-news-symbol" aria-label="Choose instrument for market news">
+<option value="XAU/USD">Gold · XAU/USD</option>
+<option value="EUR/USD">EUR/USD</option><option value="GBP/USD">GBP/USD</option>
+<option value="USD/JPY">USD/JPY</option><option value="GBP/JPY">GBP/JPY</option>
+<option value="EUR/JPY">EUR/JPY</option><option value="EUR/AUD">EUR/AUD</option>
+<option value="GBP/AUD">GBP/AUD</option><option value="USD/CHF">USD/CHF</option>
+<option value="AUD/USD">AUD/USD</option><option value="USD/CAD">USD/CAD</option>
+<option value="NASDAQ">NASDAQ</option><option value="US30">US30</option>
+<option value="S&amp;P 500">S&amp;P 500</option><option value="DAX40">DAX40</option>
+<option value="FTSE100">FTSE100</option><option value="VIX">VIX</option>
+<option value="BTC/USD">BTC/USD</option><option value="ETH/USD">ETH/USD</option>
+<option value="SOL/USD">SOL/USD</option><option value="XRP/USD">XRP/USD</option>
+<option value="ADA/USD">ADA/USD</option><option value="DOGE/USD">DOGE/USD</option>
+<option value="Volatility 10 Index">Volatility 10 Index</option>
+<option value="Volatility 25 Index">Volatility 25 Index</option>
+<option value="Volatility 50 Index">Volatility 50 Index</option>
+<option value="Volatility 75 Index">Volatility 75 Index</option>
+<option value="Volatility 100 Index">Volatility 100 Index</option>
+<option value="Boom 500 Index">Boom 500 Index</option>
+<option value="Crash 500 Index">Crash 500 Index</option><option value="Step Index">Step Index</option>
+</select>
+<button id="tw-news-refresh" type="button">Refresh headlines</button>
+<span id="tw-news-count">Waiting for feed</span>
+<div id="tw-news-status" role="status" aria-live="polite">Select a market to load current headlines.</div>
+</div>
+<div class="news" id="news">"""
+    page = page.replace('<div class="news" id="news">', controls, 1)
+    page = page.replace(
+        "Select an instrument to load current financial\nnews and sentiment.",
+        "Select an instrument to load Yahoo Finance headlines. Headlines provide context; sentiment is not scored unless verified."
+    )
+    script = r"""<script id="tw-dashboard-news-controller">
+(function(){
+  const picker=document.getElementById("tw-news-symbol");
+  const refresh=document.getElementById("tw-news-refresh");
+  const status=document.getElementById("tw-news-status");
+  const count=document.getElementById("tw-news-count");
+  const box=document.getElementById("news");
+  if(!picker||!refresh||!status||!count||!box)return;
+  function make(tag,cls,text){
+    const el=document.createElement(tag);
+    if(cls)el.className=cls;
+    if(text!==undefined)el.textContent=String(text);
+    return el;
+  }
+  function formatDate(value){
+    if(!value)return "Publication time unavailable";
+    const date=new Date(value);
+    return Number.isNaN(date.getTime())?"Publication time unavailable":date.toLocaleString();
+  }
+  window.loadNews=async function(symbol){
+    const selected=symbol||picker.value||"XAU/USD";
+    if(Array.from(picker.options).some(function(option){return option.value===selected;}))picker.value=selected;
+    refresh.disabled=true;
+    count.textContent="Loading";
+    status.textContent="Connecting to Yahoo Finance headlines for "+selected+"…";
+    box.replaceChildren(make("div","news-item","Loading current headlines…"));
+    try{
+      const response=await fetch("/api/news?symbol="+encodeURIComponent(selected),{headers:{Accept:"application/json"},cache:"no-store"});
+      if(!response.ok)throw new Error("News service returned HTTP "+response.status);
+      const data=await response.json();
+      if(!data||!Array.isArray(data.articles))throw new Error("Unexpected news response format");
+      const articles=data.articles;
+      count.textContent=articles.length+" headline"+(articles.length===1?"":"s");
+      status.textContent=data.message||(data.available?"Yahoo Finance headlines loaded.":"News is unavailable for this market.");
+      box.replaceChildren();
+      if(!articles.length){box.appendChild(make("div","news-item",data.message||"No headlines returned. Try another market."));return;}
+      articles.forEach(function(article){
+        const card=make("article","news-item");
+        card.appendChild(make("div","tw-news-meta",(article.source||data.source||"Yahoo Finance")+" · "+formatDate(article.published_at)));
+        const heading=make("h3","");
+        let safeUrl=null;
+        try{
+          const parsed=new URL(article.url||"",window.location.href);
+          if(parsed.protocol==="https:"||parsed.protocol==="http:")safeUrl=parsed.href;
+        }catch(_error){}
+        if(safeUrl){
+          const title=make("a","",article.title||"Financial headline");
+          title.href=safeUrl;title.target="_blank";title.rel="noopener noreferrer";
+          heading.appendChild(title);
+        }else{heading.textContent=article.title||"Financial headline";}
+        card.appendChild(heading);
+        const description=article.description||article.snippet||"No article summary supplied.";
+        card.appendChild(make("p","tw-news-description",description.length>320?description.slice(0,317)+"…":description));
+        if(safeUrl){
+          const link=make("a","tw-news-link","Read full article ↗");
+          link.href=safeUrl;link.target="_blank";link.rel="noopener noreferrer";card.appendChild(link);
+        }
+        box.appendChild(card);
+      });
+    }catch(error){
+      count.textContent="Unavailable";
+      status.textContent="Yahoo Finance headlines could not be loaded. Check the service and retry.";
+      box.replaceChildren(make("div","news-item",error.message||"Unknown news error"));
+    }finally{refresh.disabled=false;}
+  };
+  refresh.addEventListener("click",function(){window.loadNews(picker.value);});
+  picker.addEventListener("change",function(){window.loadNews(picker.value);});
+  window.loadNews(picker.value||"XAU/USD");
+})();
+</script>"""
+    page = page.replace("</body>", script + "\n</body>", 1)
+    return page
+
+
 @app.route("/")
 def home():
     return render_template_string(
-        PAGE,
+        apply_tw_dashboard_enhancements(PAGE),
         courses=COURSES
     )
 
