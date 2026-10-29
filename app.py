@@ -675,6 +675,13 @@ def news(symbol):
         ]
         direct_terms = tuple(relevance_terms)
 
+    def has_term(term, text):
+        # Match short tickers/acronyms as words to avoid false matches such as
+        # "SEC" inside "second" or "ether" inside "whether".
+        if len(term) <= 4 and term.replace(" ", "").isalpha():
+            return re.search(r"\\b" + re.escape(term) + r"\\b", text) is not None
+        return term in text
+
     positive_cues = (
         "rises", "gains", "rallies", "rally", "climbs", "surges", "jumps",
         "strengthens", "higher", "beats expectations", "stronger than expected",
@@ -711,8 +718,8 @@ def news(symbol):
             description = re.sub(r"<[^>]*>", " ", description)
             description = re.sub(r"\s+", " ", description).strip()
             combined = (title + " " + description).lower()
-            matches = [term for term in relevance_terms if term in combined]
-            direct = any(term in combined for term in direct_terms)
+            matches = [term for term in relevance_terms if has_term(term, combined)]
+            direct = any(has_term(term, combined) for term in direct_terms)
             if group == "METALS":
                 relevant = direct or len(matches) >= 2
             else:
@@ -722,10 +729,10 @@ def news(symbol):
 
             title_lower = title.lower()
             desc_lower = description.lower()
-            positive = sum(2 for cue in positive_cues if cue in title_lower)
-            positive += sum(1 for cue in positive_cues if cue in desc_lower)
-            negative = sum(2 for cue in negative_cues if cue in title_lower)
-            negative += sum(1 for cue in negative_cues if cue in desc_lower)
+            positive = sum(2 for cue in positive_cues if has_term(cue, title_lower))
+            positive += sum(1 for cue in positive_cues if has_term(cue, desc_lower))
+            negative = sum(2 for cue in negative_cues if has_term(cue, title_lower))
+            negative += sum(1 for cue in negative_cues if has_term(cue, desc_lower))
             tone_score = positive - negative
             tone = "BULLISH" if tone_score > 0 else "BEARISH" if tone_score < 0 else "MIXED / UNCLEAR"
             published = (item.findtext("pubDate") or "").strip()
