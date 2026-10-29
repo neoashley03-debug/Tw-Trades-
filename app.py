@@ -243,7 +243,20 @@ def _too_many_attempts_page():
         "<p><a href=\"/\">Back to TW Trades</a></p></main></body></html>"
     )
 
-DB = "tw_blueprint.db"
+# The database path must not depend on the process working directory: a
+# relative path silently creates a second, empty database whenever the app is
+# started from elsewhere. It is anchored to this file, and can be pointed at a
+# persistent disk with TW_DATABASE_PATH / DATABASE_PATH / DB_PATH.
+def _resolve_db_path():
+    for env_key in ("TW_DATABASE_PATH", "DATABASE_PATH", "DB_PATH"):
+        candidate = os.environ.get(env_key, "").strip()
+        if candidate:
+            return os.path.abspath(os.path.expanduser(candidate))
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tw_blueprint.db")
+
+
+DB = _resolve_db_path()
+SCHEMA_VERSION = "2"
 
 MAX_DAILY = 6
 MAX_PER_SESSION = 2
@@ -423,8 +436,18 @@ COURSES = [
 # ============================================================
 
 def db():
-    c = sqlite3.connect(DB)
+    """Open a connection tolerant of concurrent readers and writers.
+
+    The scanner persists signals from worker threads while requests are served,
+    so a write collision should wait for the lock rather than raise.
+    """
+    c = sqlite3.connect(DB, timeout=15)
     c.row_factory = sqlite3.Row
+    try:
+        c.execute("PRAGMA busy_timeout=15000")
+        c.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.DatabaseError:
+        app.logger.warning("SQLite WAL mode could not be enabled.")
     return c
 
 def init_db():
@@ -492,8 +515,108 @@ def init_db():
             "environment, or sign in and change it in TW Control Center."
         )
 
+    _migrate_schema(c)
+
+    # Read the state directly: get_setting() is defined further down the module
+    # and is not available yet while init_db() runs at import time.
+    try:
+        state_row = c.execute(
+            "SELECT value FROM settings WHERE key='admin_hash_state'"
+        ).fetchone()
+        hash_state = state_row["value"] if state_row else "unknown"
+    except sqlite3.DatabaseError:
+        hash_state = "unknown"
+
     c.commit()
     c.close()
+
+    app.logger.info("Database ready at %s (schema %s, password hashes %s)",
+                    DB, SCHEMA_VERSION, hash_state)
+
+
+def _ensure_columns(c, table, columns):
+    """Add only missing columns. Never drops, renames or rewrites anything."""
+    try:
+        existing = {row[1] for row in c.execute("PRAGMA table_info(" + table + ")")}
+    except sqlite3.DatabaseError:
+        return []
+    added = []
+    for name, declaration in columns:
+        if name in existing:
+            continue
+        try:
+            c.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + declaration)
+            added.append(name)
+        except sqlite3.DatabaseError:
+            app.logger.warning("Could not add column %s.%s during migration.", table, name)
+    return added
+
+
+def password_hash_audit():
+    """Count accounts still on legacy hashes. No password is ever recoverable."""
+    try:
+        c = db()
+        rows = c.execute("SELECT password_hash FROM users").fetchall()
+        c.close()
+    except sqlite3.DatabaseError:
+        return {"accounts": 0, "pbkdf2": 0, "legacy_sha256": 0, "pending_upgrade": []}
+    legacy = [r["password_hash"] for r in rows
+              if not str(r["password_hash"] or "").startswith(PBKDF2_PREFIX)]
+    return {
+        "accounts": len(rows),
+        "pbkdf2": len(rows) - len(legacy),
+        "legacy_sha256": len(legacy),
+        "pending_upgrade": len(legacy),
+        "note": "Legacy hashes cannot be converted without each password; they upgrade on next successful login.",
+    }
+
+
+def _migrate_schema(c):
+    """Reconcile an existing database with the current schema, additively."""
+    added_total = []
+
+    added_total += _ensure_columns(c, "settings", [("value", "TEXT")])
+    added_total += _ensure_columns(c, "signals", [
+        ("created", "TEXT"), ("symbol", "TEXT"), ("session", "TEXT"),
+        ("direction", "TEXT"), ("entry", "REAL"), ("stop", "REAL"),
+        ("tp1", "REAL"), ("tp2", "REAL"), ("score", "REAL"), ("reason", "TEXT"),
+    ])
+    added_total += _ensure_columns(c, "users", [
+        ("display_name", "TEXT NOT NULL DEFAULT ''"),
+        ("access_level", "TEXT NOT NULL DEFAULT 'free'"),
+        ("access_status", "TEXT NOT NULL DEFAULT 'active'"),
+        ("created_at", "TEXT NOT NULL DEFAULT ''"),
+    ])
+
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+        "CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created)",
+        "CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)",
+    ):
+        try:
+            c.execute(statement)
+        except sqlite3.DatabaseError:
+            app.logger.warning("Index creation skipped: %s", statement)
+
+    c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('schema_version',?)",
+              (SCHEMA_VERSION,))
+    c.execute("UPDATE settings SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,))
+
+    audit = password_hash_audit()
+    state = ("pbkdf2" if audit["legacy_sha256"] == 0
+             else "legacy-pending" if audit["pbkdf2"] == 0
+             else "mixed")
+    c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('admin_hash_state',?)", (state,))
+    c.execute("UPDATE settings SET value=? WHERE key='admin_hash_state'", (state,))
+
+    if added_total:
+        app.logger.warning("Schema migration added columns: %s", ", ".join(added_total))
+    if audit["pending_upgrade"]:
+        app.logger.warning(
+            "%s account(s) still use legacy password hashes and will upgrade on next login.",
+            audit["pending_upgrade"],
+        )
+
 
 init_db()
 
@@ -8844,6 +8967,42 @@ def home():
         PAGE,
         courses=COURSES
     )
+
+@app.route("/api/db/status")
+def api_db_status():
+    """Read-only database diagnostics for the owner. No credentials are exposed."""
+    if not session.get("admin"):
+        return jsonify({"error": "Admin session required."}), 401
+    tables = {}
+    try:
+        c = db()
+        for name in ("settings", "signals", "users"):
+            try:
+                tables[name] = c.execute("SELECT COUNT(*) n FROM " + name).fetchone()["n"]
+            except sqlite3.DatabaseError:
+                tables[name] = "missing"
+        schema_version = None
+        try:
+            row = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
+            schema_version = row["value"] if row else None
+        except sqlite3.DatabaseError:
+            pass
+        c.close()
+    except sqlite3.DatabaseError as exc:
+        return jsonify({"error": "Database unreadable.", "detail": str(exc)}), 500
+
+    return jsonify({
+        "path": DB,
+        "path_is_absolute": os.path.isabs(DB),
+        "path_override_env": next((k for k in ("TW_DATABASE_PATH", "DATABASE_PATH", "DB_PATH")
+                                   if os.environ.get(k, "").strip()), None),
+        "exists": os.path.exists(DB),
+        "size_bytes": os.path.getsize(DB) if os.path.exists(DB) else 0,
+        "schema_version": schema_version,
+        "tables": tables,
+        "password_hashes": password_hash_audit(),
+    })
+
 
 @app.route("/health")
 def health():
