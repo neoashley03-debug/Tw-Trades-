@@ -280,7 +280,6 @@ def init_db():
     """)
 
     defaults = {
-        "marketaux_key":"",
         "openai_key":"",
         "openai_model":"gpt-5.6",
         "deriv_app_id":"",
@@ -589,66 +588,102 @@ def td(symbol, interval, size=100):
     return biquote_candles(symbol, interval, size)
 
 # ============================================================
-# MARKET AUX
+# MARKET NEWS — GDELT DOC API (no API key required)
 # ============================================================
 
 def news(symbol):
-    key=get_setting("marketaux_key")
+    """Fetch current headlines from GDELT. News headlines are not treated as sentiment."""
+    if symbol not in ASSETS:
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "Unsupported instrument."}
 
-    if not key:
-        return {
-            "available":False,
-            "sentiment":0,
-            "articles":[]
-        }
-
+    # Human-readable terms produce more relevant results than broker-specific symbols.
+    queries = {
+        "XAU/USD": '(gold OR bullion OR "precious metals")',
+        "EUR/USD": '(euro OR EURUSD OR "European Central Bank")',
+        "GBP/USD": '(sterling OR GBPUSD OR "Bank of England")',
+        "USD/JPY": '(yen OR USDJPY OR "Bank of Japan")',
+        "GBP/JPY": '(sterling OR yen OR GBPJPY)',
+        "EUR/JPY": '(euro OR yen OR EURJPY)',
+        "EUR/AUD": '(euro OR Australian dollar OR EURAUD)',
+        "GBP/AUD": '(sterling OR Australian dollar OR GBPAUD)',
+        "USD/CHF": '(Swiss franc OR USDCHF OR SNB)',
+        "AUD/USD": '(Australian dollar OR AUDUSD OR RBA)',
+        "USD/CAD": '(Canadian dollar OR USDCAD OR Bank of Canada)',
+        "NASDAQ": '(Nasdaq OR technology stocks OR Nasdaq-100)',
+        "US30": '("Dow Jones" OR Dow30 OR DJIA)',
+        "S&P 500": '("S&P 500" OR SP500 OR "US stocks")',
+        "DAX40": '(DAX OR "German stocks")',
+        "FTSE100": '(FTSE OR "UK stocks")',
+        "VIX": '(VIX OR "market volatility")',
+        "BTC/USD": '(Bitcoin OR BTC OR cryptocurrency)',
+        "ETH/USD": '(Ethereum OR ETH OR cryptocurrency)',
+        "SOL/USD": '(Solana OR SOL cryptocurrency)',
+        "XRP/USD": '(XRP OR Ripple cryptocurrency)',
+        "ADA/USD": '(Cardano OR ADA cryptocurrency)',
+        "DOGE/USD": '(Dogecoin OR DOGE cryptocurrency)',
+        "Volatility 10 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 25 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 50 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 75 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 100 Index": '("synthetic indices" OR Deriv)',
+        "Boom 500 Index": '("synthetic indices" OR Deriv)',
+        "Crash 500 Index": '("synthetic indices" OR Deriv)',
+        "Step Index": '("synthetic indices" OR Deriv)'
+    }
+    query = queries.get(symbol, ASSETS[symbol].get("news", symbol))
     try:
-        entity=ASSETS[symbol]["news"]
-
-        r=requests.get(
-            "https://api.marketaux.com/v1/news/all",
+        response = requests.get(
+            "https://api.gdeltproject.org/api/v2/doc/doc",
             params={
-                "api_token":key,
-                "symbols":entity,
-                "filter_entities":"true",
-                "language":"en",
-                "limit":10
+                "query": query,
+                "mode": "ArtList",
+                "format": "json",
+                "maxrecords": 10,
+                "sort": "HybridRel"
             },
-            timeout=15
+            timeout=12,
+            headers={"User-Agent": "TW-Trades-Intelligence/1.0"}
         )
-
-        r.raise_for_status()
-        data=r.json()
-        if not isinstance(data,dict) or data.get("error"):
-            return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux returned an API error. Check the key and account limits in Admin."}
-        articles=data.get("data",[])
-
-        scores=[]
-
-        for article in articles:
-            for ent in article.get("entities",[]):
-                s=ent.get("sentiment_score")
-
-                if isinstance(s,(int,float)):
-                    scores.append(float(s))
-
-        sentiment=(
-            sum(scores)/len(scores)
-            if scores else 0
-        )
-
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("GDELT returned an unexpected response.")
+        rows = payload.get("articles", [])
+        articles = []
+        for row in rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title") or "").strip()
+            url = str(row.get("url") or "").strip()
+            if not title or not url.startswith(("https://", "http://")):
+                continue
+            articles.append({
+                "title": title,
+                "url": url,
+                "description": "",
+                "snippet": "",
+                "published_at": row.get("seendate", ""),
+                "source": row.get("domain", "GDELT")
+            })
         return {
-            "available":True,
-            "sentiment":round(sentiment,3),
-            "articles":articles[:6]
+            "available": True,
+            "sentiment": 0,
+            "sentiment_available": False,
+            "articles": articles,
+            "source": "GDELT",
+            "message": "Headlines from GDELT. Sentiment scoring is not supplied by this source."
         }
-
     except requests.Timeout:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux timed out. Try again shortly."}
-    except requests.RequestException:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not be reached. Check the service and API key."}
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news request timed out. Retry shortly."}
+    except (requests.RequestException, ValueError):
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news is temporarily unavailable. Technical analysis remains separate."}
     except Exception:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not process this request."}
+        app.logger.exception("GDELT news processing failed.")
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news could not be processed."}
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -796,7 +831,7 @@ def fundamental_view(sent):
             "bias":"POSITIVE",
             "impact":"HIGH",
             "description":
-            "Recent MarketAux entity sentiment is materially positive."
+            "Recent GDELT entity sentiment is materially positive."
         }
 
     if sent>=0.10:
@@ -812,7 +847,7 @@ def fundamental_view(sent):
             "bias":"NEGATIVE",
             "impact":"HIGH",
             "description":
-            "Recent MarketAux entity sentiment is materially negative."
+            "Recent GDELT entity sentiment is materially negative."
         }
 
     if sent<=-0.10:
@@ -979,7 +1014,7 @@ def analyze(symbol):
         sell.append("Bearish continuation")
 
     n=news(symbol)
-    fund=fundamental_view(n["sentiment"])
+    fund=(fundamental_view(n["sentiment"]) if n.get("sentiment_available") else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"Headline source does not provide verified sentiment scores; sentiment excluded from scoring."})
 
     if n["sentiment"]>0.10:
         technical_buy+=5
@@ -1029,9 +1064,21 @@ def analyze(symbol):
             "trend1h":t1,
             "trend15m":t15,
             "icc_state":icc_state,
+            "indication": indication,
+            "correction": correction_ok,
+            "continuation": continuation_ok,
+            "latest_close": round(frames["5min"][-1]["close"], 6),
+            "confluence_checks": {
+                "indication": indication,
+                "correction": correction_ok,
+                "continuation": continuation_ok,
+                "higher_timeframes_agree": higher_tf_agree,
+                "15m_not_opposed": mid_tf_not_opposed
+            },
             "fundamental":fund,
-            "news_sentiment":n["sentiment"] if n["available"] else None,
-            "data_source":"BiQuote public OHLC feed",
+            "news_source":n.get("source", "GDELT"),
+            "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
+            "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
             "news_available":n["available"],
             "message":"No signal: " + "; ".join(blockers) + "."
         }
@@ -1081,10 +1128,11 @@ def analyze(symbol):
             "higher_timeframes_agree":True,
             "15m_not_opposed":True
         },
-        "data_source":"BiQuote public OHLC feed",
+        "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
         "news_available":n["available"],
-        "fundamental":fund if n["available"] else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"No verified news sentiment available; sentiment excluded from scoring."},
-        "news_sentiment":n["sentiment"] if n["available"] else None,
+        "fundamental":fund,
+        "news_source":n.get("source", "GDELT"),
+        "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
         "articles":n["articles"] if n["available"] else [],
         "reasons":reasons
     }
@@ -1434,6 +1482,48 @@ def market_data_universe_status():
     })
 
 
+@app.route("/api/blueprint")
+def api_blueprint():
+    """Read-only TW Blueprint ICC analysis for one supported instrument; never persists a signal."""
+    symbol = request.args.get("symbol", "XAU/USD").strip()
+    if symbol not in ASSETS:
+        return jsonify({
+            "symbol": symbol,
+            "status": "ERROR",
+            "message": "Unsupported symbol. Choose a symbol listed by TW Trades."
+        }), 400
+    result = analyze(symbol)
+    checks = result.get("confluence_checks", {})
+    return jsonify({
+        "engine": "TW Blueprint ICC",
+        "symbol": symbol,
+        "read_only": True,
+        "status": result.get("status", "UNKNOWN"),
+        "direction": result.get("direction"),
+        "score": result.get("score"),
+        "session": result.get("session"),
+        "icc_state": result.get("icc_state", "UNAVAILABLE"),
+        "indication": result.get("indication", checks.get("indication", False)),
+        "correction": result.get("correction", checks.get("correction", False)),
+        "continuation": result.get("continuation", checks.get("continuation", False)),
+        "confluence_checks": checks,
+        "trend4h": result.get("trend4h"),
+        "trend1h": result.get("trend1h"),
+        "trend15m": result.get("trend15m"),
+        "entry": result.get("entry"),
+        "stop": result.get("stop"),
+        "tp1": result.get("tp1"),
+        "tp2": result.get("tp2"),
+        "latest_close": result.get("latest_close"),
+        "atr": result.get("atr"),
+        "data_source": result.get("data_source"),
+        "news_source": result.get("news_source", "GDELT"),
+        "news_available": result.get("news_available", False),
+        "fundamental": result.get("fundamental", {"bias":"UNAVAILABLE","impact":"UNKNOWN"}),
+        "message": result.get("message", "Analysis completed.")
+    })
+
+
 @app.route("/api/scan")
 def api_scan():
 
@@ -1770,7 +1860,6 @@ def admin():
     if request.method=="POST":
 
         for key in [
-            "marketaux_key",
             "openai_key",
             "openai_model",
             "deriv_app_id"
@@ -1794,7 +1883,6 @@ def admin():
 
     return render_template_string(
     ADMIN_HTML,
-    ma="********" if get_setting("marketaux_key") else "",
     ai="********" if get_setting("openai_key") else "",
     model=get_setting("openai_model"),
     deriv_app_id=get_setting("deriv_app_id")
@@ -2125,10 +2213,7 @@ font-size:32px !important;
 
 <form method="post">
 
-<label>MarketAux API Key</label>
-<input name="marketaux_key"
-value="{{ma}}"
-type="password">
+<p style="color:#9eacbd;font-size:13px">News source: GDELT public news search. No API key is required. Headlines are shown without fabricated sentiment scores.</p>
 
 <label>OpenAI API Key</label>
 <input name="openai_key"
@@ -2163,7 +2248,7 @@ type="password">
 <p>✓ Autonomy of Success Academy</p>
 <p>✓ Fundamental Intelligence</p>
 <p>✓ AI Analyst</p>
-<p>✓ MarketAux News</p>
+<p>✓ GDELT financial/news headlines (no API key required; sentiment not fabricated)</p>
 <p>✓ Public BiQuote candles for supported FX, metals and indices</p>
 <p>✓ Deriv public WebSocket candles for crypto and synthetic indices</p>
 <p>✓ 6-signal daily engine</p>
@@ -2733,6 +2818,194 @@ body.tw-nav-view section.tw-nav-active{display:block!important;}
 
 </style>
 
+
+<style id="tw-pro-workspace-upgrade">
+/* TW TRADES PRO WORKSPACE UI — additive presentation layer; existing app logic preserved */
+:root{
+  --tw-accent:#00ffd0;
+  --tw-accent-soft:rgba(0,255,208,.12);
+  --tw-surface:rgba(12,19,30,.92);
+  --tw-border:rgba(148,169,196,.17);
+  --tw-muted:#9aa9bd;
+}
+html{scroll-padding-top:94px;scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(ellipse at 15% 0%,rgba(42,65,113,.14),transparent 42%),
+    radial-gradient(ellipse at 92% 12%,rgba(0,255,208,.055),transparent 30%),
+    #05070b;
+  color:#edf3fb;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.15;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:42px 42px;
+}
+nav{
+  min-height:76px;
+  padding:13px clamp(16px,4vw,54px);
+  gap:20px;
+  background:rgba(5,9,16,.9);
+  border-bottom:1px solid rgba(148,169,196,.15);
+  box-shadow:0 10px 35px rgba(0,0,0,.16);
+  backdrop-filter:blur(22px);
+  -webkit-backdrop-filter:blur(22px);
+}
+.logo{
+  flex-shrink:0;
+  font-size:19px;
+  letter-spacing:2.5px;
+  line-height:1.1;
+}
+.logo span{color:var(--tw-accent);margin-left:5px}
+.navlinks{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:4px;
+}
+.navlinks a{
+  display:inline-flex;
+  align-items:center;
+  min-height:35px;
+  margin:0;
+  padding:8px 10px;
+  border:1px solid transparent;
+  border-radius:9px;
+  color:#a9b7ca;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.015em;
+  white-space:nowrap;
+  transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease;
+}
+.navlinks a:hover,.navlinks a:focus-visible{
+  background:rgba(255,255,255,.055);
+  border-color:var(--tw-border);
+  color:#fff;
+  transform:translateY(-1px);
+}
+.navlinks a[href="/access"]{
+  color:#04100e;
+  background:var(--tw-accent);
+  border-color:var(--tw-accent);
+  padding-left:13px;padding-right:13px;
+}
+.navlinks a[href="/access"]:hover{background:#9dffe9;border-color:#9dffe9;color:#04100e}
+.navlinks a[href="/admin"]{color:#c1cde0}
+.menu{
+  border:1px solid var(--tw-border);
+  border-radius:10px;
+  background:#101927;
+  color:#eaf3ff;
+  min-width:42px;
+  min-height:40px;
+}
+.hero{
+  min-height:min(86vh,850px);
+  padding:clamp(64px,10vh,112px) clamp(22px,8vw,110px);
+  overflow:hidden;
+}
+.hero:before{
+  content:"";position:absolute;left:7%;top:18%;width:1px;height:65%;
+  background:linear-gradient(transparent,rgba(0,255,208,.18),transparent);
+}
+.hero-content{position:relative;z-index:1;max-width:920px}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:10px;
+  border:1px solid rgba(0,255,208,.22);
+  background:rgba(0,255,208,.045);
+  border-radius:99px;
+  padding:9px 13px;
+  font-size:10px;letter-spacing:2.3px;color:#9df8e3;
+}
+.eyebrow:before{content:"";width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:var(--tw-accent);box-shadow:0 0 13px rgba(0,255,208,.65)}
+h1{
+  font-size:clamp(48px,8vw,100px);
+  line-height:.99;
+  letter-spacing:-.065em;
+  max-width:850px;
+  margin:25px 0 23px;
+}
+.gradient{
+  background:linear-gradient(100deg,#fff 0%,#9ef9e5 45%,#7b9dff 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero p{font-size:clamp(15px,1.7vw,18px);max-width:680px;color:#a8b6c9;line-height:1.85}
+.buttons{gap:10px;margin-top:32px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  min-height:48px;padding:13px 19px;border-radius:11px;
+  border:1px solid rgba(148,169,196,.23);
+  background:rgba(17,26,40,.78);color:#e8f1ff;
+  font-size:11px;letter-spacing:.055em;
+  transition:transform .18s ease,border-color .18s ease,background .18s ease;
+}
+.btn:hover{transform:translateY(-2px);border-color:rgba(0,255,208,.42);background:#142233}
+.btn.primary{
+  background:var(--tw-accent);color:#03100e;border-color:var(--tw-accent);
+  box-shadow:0 8px 26px rgba(0,255,208,.12);
+}
+.btn.primary:hover{background:#9dffe9;border-color:#9dffe9}
+.ticker{
+  border-top:1px solid rgba(148,169,196,.1);
+  border-bottom:1px solid rgba(148,169,196,.1);
+  background:rgba(10,16,26,.72);
+  padding:13px 10px;
+  color:#a8b8ca;
+  font-size:10px;letter-spacing:.12em;
+}
+section{padding:clamp(62px,8vw,100px) clamp(18px,6vw,78px)}
+.section-head{margin-bottom:32px}
+.kicker{color:var(--tw-accent);font-size:10px;letter-spacing:2.6px}
+h2{font-size:clamp(29px,4.2vw,49px);line-height:1.1;letter-spacing:-.045em}
+.muted{color:#9aa9bd}
+.cards,.news,.signal-grid{gap:14px}
+.card{
+  border:1px solid var(--tw-border);
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(17,27,42,.94),rgba(7,12,20,.94));
+  padding:clamp(20px,2.4vw,28px);
+  box-shadow:0 12px 38px rgba(0,0,0,.12);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+.card:hover{transform:translateY(-3px);border-color:rgba(0,255,208,.25);box-shadow:0 18px 48px rgba(0,0,0,.22)}
+.tag{background:rgba(0,255,208,.075);border:1px solid rgba(0,255,208,.13);color:#9ef9e5}
+.terminal{border-color:rgba(0,255,208,.19);border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.28)}
+.term-top{background:rgba(255,255,255,.018)}
+.signal,.news-item{border-color:var(--tw-border);background:rgba(12,19,30,.9)}
+button,input,select,textarea{font:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--tw-accent);outline-offset:3px}
+button:disabled{opacity:.55;cursor:not-allowed}
+footer{border-top:1px solid rgba(148,169,196,.14)}
+@media(min-width:1200px){
+  nav{padding-left:clamp(28px,4vw,64px);padding-right:clamp(28px,4vw,64px)}
+  .hero{padding-left:clamp(70px,10vw,150px)}
+}
+@media(max-width:1000px) and (min-width:761px){
+  nav{align-items:flex-start;flex-wrap:wrap}
+  .navlinks{justify-content:flex-start;max-width:100%;gap:3px}
+  .navlinks a{font-size:10px;padding:7px 8px}
+}
+@media(max-width:760px){
+  nav{min-height:66px;padding:12px 16px;align-items:center}
+  .logo{font-size:18px}
+  .hero{min-height:76vh;padding:70px 24px 78px}
+  .hero:before{left:12px;top:15%;height:68%}
+  h1{letter-spacing:-.055em}
+  .hero p{font-size:15px}
+  .buttons{align-items:stretch}
+  .buttons .btn{flex:1 1 190px;text-align:center}
+  section{padding:62px 18px}
+  .card:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
 </head>
 
 <body>
@@ -2952,7 +3225,7 @@ and entity sentiment.
 <div class="news" id="news">
 
 <div class="news-item">
-<h3>MarketAux Intelligence</h3>
+<h3>GDELT Market News</h3>
 <p class="muted">
 Select an instrument to load current financial
 news and sentiment.
@@ -3332,7 +3605,13 @@ if(data.status==="QUALIFIED"){
     data.trend1h?("1H: "+data.trend1h):"",
     data.trend15m?("15M: "+data.trend15m):""
   ].filter(Boolean).join(" · ");
-  box.innerHTML='<div class="signal"><h3>'+String(data.status||"NO TRADE")+'</h3><p class="muted">'+String(detail)+'</p>'+score+(trends?'<p class="muted">'+trends+'</p>':"")+'</div>';
+  const checks=data.confluence_checks||{};
+  const icc='<p class="muted"><strong>TW Blueprint ICC:</strong> '+String(data.icc_state||"NOT CONFIRMED")+
+    ' · Indication '+(checks.indication?"✓":"—")+
+    ' · Correction '+(checks.correction?"✓":"—")+
+    ' · Continuation '+(checks.continuation?"✓":"—")+'</p>';
+  box.innerHTML='<div class="signal"><h3>'+String(data.status||"NO TRADE")+'</h3><p class="muted">'+String(detail)+'</p>'+score+(trends?'<p class="muted">'+trends+'</p>':"")+icc+
+    '<p class="muted">Source: '+String(data.data_source||"Not confirmed")+'</p></div>';
 }
 
 loadNews(symbol);
@@ -3450,8 +3729,8 @@ const box=document.getElementById("news");
 if(!data.available || !data.articles?.length){
 
 const message=data.message || (!data.available
-  ? "Market news is not connected. Add a valid MarketAux API key in Admin to enable live headlines and sentiment."
-  : "MarketAux returned no matching articles for this instrument.");
+  ? "Live news is temporarily unavailable from GDELT. Retry shortly; no sentiment is inferred from headlines."
+  : "GDELT returned no matching current headlines for this instrument.");
 
 box.innerHTML=`
 <div class="news-item">
@@ -3468,12 +3747,12 @@ box.innerHTML=data.articles.map(a=>`
 <div class="news-item">
 
 <span class="tag">
-MARKETAUX
+${(a.source||data.source||"GDELT").replace(/[<>]/g,"")}
 </span>
 
 <h3>
 <a href="${a.url||"#"}"
-target="_blank">
+target="_blank" rel="noopener noreferrer">
 ${a.title||"Financial news"}
 </a>
 </h3>
@@ -3658,7 +3937,7 @@ through the connected market-data infrastructure.
 <div class="tw-intel">
 <strong>◈ Market News</strong>
 <span>
-Financial-news intelligence powered by the connected MarketAux
+Financial-news headlines powered by GDELT. Headlines are not sentiment scores.
 news service.
 </span>
 </div>
@@ -7141,13 +7420,17 @@ TikTok · @snowFx3
   }
 }
 
-/* HOMEPAGE CLEANUP: hide older duplicate terminals/scanners while retaining their code safely */
+/* HOMEPAGE CLEANUP: one canonical scanner/chart; suppress duplicate injected copies only. */
 #twRealTradingView,
 #twScannerDetails,
 #intelligence-terminal,
+#apex-dashboard,
+#tw-live-market-upgrade,
 #tw-live-terminal-v2 {
   display: none !important;
 }
+#terminal, #intelligence, #ai-intelligence { display:block; }
+
 
 </style>
 
