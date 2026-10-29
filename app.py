@@ -3746,7 +3746,7 @@ ${(a.source||data.source||"GDELT").replace(/[<>]/g,"")}
 
 <h3>
 <a href="${a.url||"#"}"
-target="_blank">
+target="_blank" rel="noopener noreferrer">
 ${a.title||"Financial news"}
 </a>
 </h3>
