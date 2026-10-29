@@ -6580,7 +6580,7 @@ TikTok · @snowFx3
 
         <div class="tw-chart-wrap">
 
-            <div id="twTradingViewChart"></div>
+            <div id="twTradingViewChartMarket"></div>
 
         </div>
 
@@ -6802,7 +6802,7 @@ TikTok · @snowFx3
     window.twLoadTradingView = function(symbol){
 
         const container =
-            document.getElementById("twTradingViewChart");
+            document.getElementById("twTradingViewChartMarket");
 
         const status =
             document.getElementById("twChartStatus");
@@ -8171,7 +8171,7 @@ TikTok · @snowFx3
 
     if(
         document.getElementById(
-            "twTradingViewChart"
+            "twTradingViewChartMarket"
         )
     ){
 
@@ -8426,13 +8426,15 @@ TikTok · @snowFx3
 #twRealTradingView,
 #twScannerDetails,
 #intelligence-terminal,
-#tw-live-market-upgrade,
 #tw-live-terminal-v2 {
   display: none !important;
 }
+/* #tw-live-market-upgrade owns the #scanner navigation target and the market
+   chart, so it must stay visible. */
 /* #apex-dashboard is a unique top-level section linked from the primary
    navigation, so it is intentionally not suppressed here. */
-#terminal, #intelligence, #ai-intelligence, #apex-dashboard { display:block; }
+#terminal, #intelligence, #ai-intelligence, #apex-dashboard,
+#tw-live-market-upgrade { display:block; }
 
 
 </style>
