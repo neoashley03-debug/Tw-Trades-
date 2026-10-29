@@ -6221,102 +6221,30 @@ TikTok · @snowFx3
 
     function scannerCard(symbol,data){
 
-        if(!data || data.error){
-
-            return `
-            <div class="tw-scan-row">
-
-                <div class="tw-scan-top">
-                    <div class="tw-scan-symbol">
-                        ${esc(symbol)}
-                    </div>
-
-                    <div class="tw-scan-status">
-                        DATA UNAVAILABLE
-                    </div>
-                </div>
-
-                <div class="tw-live-muted">
-                    ${esc(data && data.error
-                        ? data.error
-                        : "No live response returned.")}
-                </div>
-
-            </div>`;
+        if(!data){
+            return `<div class="tw-scan-row"><div class="tw-scan-symbol">${esc(symbol)}</div><div class="tw-live-muted">No response returned by the engine.</div></div>`;
         }
 
-
-        const bias =
-            data.bias ||
-            data.signal ||
-            "NEUTRAL";
-
+        const status = String(data.status || (data.error ? "DATA ERROR" : "UNKNOWN")).toUpperCase();
+        const direction = data.direction || data.bias || data.signal || status;
+        const isQualified = status === "QUALIFIED";
+        const isError = status === "ERROR" || status === "DATA ERROR";
+        const stateColor = isQualified ? "#00ffd0" : (isError ? "#ff6685" : "#b9c5d5");
 
         return `
-        <div class="tw-scan-row"
-             data-scan-symbol="${esc(symbol)}">
-
-            <div class="tw-scan-top">
-
-                <div class="tw-scan-symbol">
-                    ${esc(symbol)}
-                </div>
-
-                <div class="tw-scan-status">
-                    LIVE RESPONSE
-                </div>
-
-            </div>
-
-            <div class="tw-scan-bias"
-                 style="color:${biasClass(bias)}">
-                ${esc(bias)}
-            </div>
-
-            <div class="tw-scan-meta">
-
-                <div>
-                    <span>SUPPORT</span>
-                    <strong>${esc(data.support)}</strong>
-                </div>
-
-                <div>
-                    <span>RESISTANCE</span>
-                    <strong>${esc(data.resistance)}</strong>
-                </div>
-
-                <div>
-                    <span>INDICATION</span>
-                    <strong>${esc(data.indication)}</strong>
-                </div>
-
-                <div>
-                    <span>CORRECTION</span>
-                    <strong>${esc(data.correction)}</strong>
-                </div>
-
-                <div>
-                    <span>CONTINUATION</span>
-                    <strong>${esc(data.continuation)}</strong>
-                </div>
-
-                <div>
-                    <span>TECHNICAL</span>
-                    <strong>${esc(data.technical)}</strong>
-                </div>
-
-                <div>
-                    <span>FUNDAMENTAL</span>
-                    <strong>${esc(data.fundamental)}</strong>
-                </div>
-
-                <div>
-                    <span>SENTIMENT</span>
-                    <strong>${esc(data.sentiment)}</strong>
-                </div>
-
-            </div>
-
+        <div class="tw-scan-row" ${isQualified ? `data-scan-symbol="${esc(symbol)}"` : ""}>
+          <div class="tw-scan-top">
+            <div class="tw-scan-symbol">${esc(symbol)}</div>
+            <div class="tw-scan-status" style="color:${stateColor}">${esc(status)}</div>
+          </div>
+          <div class="tw-scan-bias" style="color:${biasClass(direction)}">${esc(direction)}</div>
+          <div class="tw-scan-meta">
+            <div><span>SCORE</span><strong>${esc(data.score === undefined ? "—" : data.score + "/100")}</strong></div>
+            <div><span>LAST PRICE</span><strong>${esc(data.latest_close)}</strong></div>
+            <div><span>4H TREND</span><strong>${esc(data.trend4h)}</strong></div>
+            <div><span>1H TREND</span><strong>${esc(data.trend1h)}</strong></div>
+          </div>
+          <div class="tw-live-muted">${esc(data.message || data.error || (isQualified ? "Setup passed TW Blueprint checks." : "No qualified setup confirmed."))}</div>
         </div>`;
     }
 
@@ -6328,7 +6256,7 @@ TikTok · @snowFx3
             const controller = new AbortController();
             const timeoutId = setTimeout(function(){
                 controller.abort();
-            }, 25000);
+            }, 50000);
 
             let response;
             try {
@@ -6402,12 +6330,17 @@ TikTok · @snowFx3
             scannerGrid.appendChild(loading);
 
 
-            // Run scans concurrently so one slow symbol does not freeze the whole dashboard.
-            const results = await Promise.all(
-                scannerAssets.map(function(symbol){
-                    return scanOne(symbol);
-                })
-            );
+            // Bound provider load: each symbol requests four timeframes.
+            // Two workers keep the page responsive without opening 24 requests at once.
+            const results = new Array(scannerAssets.length);
+            let nextIndex = 0;
+            async function scanWorker(){
+                while(nextIndex < scannerAssets.length){
+                    const index = nextIndex++;
+                    results[index] = await scanOne(scannerAssets[index]);
+                }
+            }
+            await Promise.all([scanWorker(), scanWorker()]);
 
 
             scannerGrid.innerHTML =
