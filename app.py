@@ -1064,10 +1064,21 @@ def analyze(symbol):
             "trend1h":t1,
             "trend15m":t15,
             "icc_state":icc_state,
+            "indication": indication,
+            "correction": correction_ok,
+            "continuation": continuation_ok,
+            "latest_close": round(frames["5min"][-1]["close"], 6),
+            "confluence_checks": {
+                "indication": indication,
+                "correction": correction_ok,
+                "continuation": continuation_ok,
+                "higher_timeframes_agree": higher_tf_agree,
+                "15m_not_opposed": mid_tf_not_opposed
+            },
             "fundamental":fund,
             "news_source":n.get("source", "GDELT"),
             "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
-            "data_source":"BiQuote public OHLC feed",
+            "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
             "news_available":n["available"],
             "message":"No signal: " + "; ".join(blockers) + "."
         }
@@ -1117,7 +1128,7 @@ def analyze(symbol):
             "higher_timeframes_agree":True,
             "15m_not_opposed":True
         },
-        "data_source":"BiQuote public OHLC feed",
+        "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
         "news_available":n["available"],
         "fundamental":fund,
         "news_source":n.get("source", "GDELT"),
@@ -1468,6 +1479,48 @@ def market_data_universe_status():
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
         "note": "Read-only diagnostics. OK means recent candles were returned by the named provider; it does not guarantee execution prices match another broker."
+    })
+
+
+@app.route("/api/blueprint")
+def api_blueprint():
+    """Read-only TW Blueprint ICC analysis for one supported instrument; never persists a signal."""
+    symbol = request.args.get("symbol", "XAU/USD").strip()
+    if symbol not in ASSETS:
+        return jsonify({
+            "symbol": symbol,
+            "status": "ERROR",
+            "message": "Unsupported symbol. Choose a symbol listed by TW Trades."
+        }), 400
+    result = analyze(symbol)
+    checks = result.get("confluence_checks", {})
+    return jsonify({
+        "engine": "TW Blueprint ICC",
+        "symbol": symbol,
+        "read_only": True,
+        "status": result.get("status", "UNKNOWN"),
+        "direction": result.get("direction"),
+        "score": result.get("score"),
+        "session": result.get("session"),
+        "icc_state": result.get("icc_state", "UNAVAILABLE"),
+        "indication": result.get("indication", checks.get("indication", False)),
+        "correction": result.get("correction", checks.get("correction", False)),
+        "continuation": result.get("continuation", checks.get("continuation", False)),
+        "confluence_checks": checks,
+        "trend4h": result.get("trend4h"),
+        "trend1h": result.get("trend1h"),
+        "trend15m": result.get("trend15m"),
+        "entry": result.get("entry"),
+        "stop": result.get("stop"),
+        "tp1": result.get("tp1"),
+        "tp2": result.get("tp2"),
+        "latest_close": result.get("latest_close"),
+        "atr": result.get("atr"),
+        "data_source": result.get("data_source"),
+        "news_source": result.get("news_source", "GDELT"),
+        "news_available": result.get("news_available", False),
+        "fundamental": result.get("fundamental", {"bias":"UNAVAILABLE","impact":"UNKNOWN"}),
+        "message": result.get("message", "Analysis completed.")
     })
 
 
