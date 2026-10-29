@@ -667,26 +667,30 @@ def yahoo_index_candles(symbol, interval, size=100):
                 continue
 
         if interval == "4h":
-            # Aggregate four consecutive hourly candles into UTC 4-hour buckets.
-            buckets = {}
-            for bar in bars:
-                bucket = (bar["epoch"] // 14400) * 14400
-                buckets.setdefault(bucket, []).append(bar)
+            # Aggregate four genuinely consecutive hourly candles. Fixed UTC
+            # buckets incorrectly discarded index-market bars when exchanges
+            # close overnight and sessions do not fill every UTC hour.
+            ordered = sorted(bars, key=lambda item: item["epoch"])
             aggregated = []
-            for bucket in sorted(buckets):
-                group_bars = sorted(buckets[bucket], key=lambda item: item["epoch"])
-                # Only use fully formed 4-hour buckets with all four hourly bars.
-                if len(group_bars) != 4:
-                    continue
-                if group_bars[-1]["epoch"] + 3600 > int(datetime.now(timezone.utc).timestamp()):
-                    continue
-                aggregated.append({
-                    "time": datetime.fromtimestamp(bucket, timezone.utc).isoformat(),
-                    "open": group_bars[0]["open"],
-                    "high": max(item["high"] for item in group_bars),
-                    "low": min(item["low"] for item in group_bars),
-                    "close": group_bars[-1]["close"]
-                })
+            run = []
+            for bar in ordered:
+                if run and bar["epoch"] != run[-1]["epoch"] + 3600:
+                    run = []
+                run.append(bar)
+                if len(run) == 4:
+                    # Only use fully completed source candles.
+                    if run[-1]["epoch"] + 3600 <= int(datetime.now(timezone.utc).timestamp()):
+                        aggregated.append({
+                            # Use the final source candle's timestamp so the
+                            # freshness check measures the actual source data,
+                            # not the start of the four-hour group.
+                            "time": datetime.fromtimestamp(run[-1]["epoch"], timezone.utc).isoformat(),
+                            "open": run[0]["open"],
+                            "high": max(item["high"] for item in run),
+                            "low": min(item["low"] for item in run),
+                            "close": run[-1]["close"]
+                        })
+                    run = []
             values = aggregated[-int(size):]
         else:
             # Discard the last potentially-forming candle.
