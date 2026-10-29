@@ -1044,22 +1044,31 @@ def analyze(symbol):
     # TW Blueprint ICC is mandatory: body-based indication, correction, and
     # continuation must all exist in the same direction. Require 4H/1H
     # agreement and reject an opposing 15M trend. No partial setup is promoted.
-    indication, correction_ok, continuation_ok = icc_sequence(m5, direction)
+    indication, correction_ok, _sequence_continuation = icc_sequence(m5, direction)
+    continuation_detected = continuation(m5, direction)
+    # A continuation candle can appear before the required ICC sequence is complete.
+    # Keep raw momentum separate from a qualified ICC continuation stage.
+    continuation_ok = bool(indication and correction_ok and continuation_detected)
     higher_tf_agree = (t4 == ("BULLISH" if direction == "BUY" else "BEARISH")
                        and t1 == ("BULLISH" if direction == "BUY" else "BEARISH"))
     mid_tf_not_opposed = t15 != ("BEARISH" if direction == "BUY" else "BULLISH")
     icc_state = (
-        "CONTINUATION" if indication and correction_ok and continuation_ok
+        "CONTINUATION" if continuation_ok
+        else "CORRECTION" if indication and correction_ok
         else "INDICATION" if indication
-        else "CORRECTION" if correction_ok
         else "RANGE / NO ICC"
     )
+    atr_value = atr(m5)
     if (score < 72 or not indication or not correction_ok or not continuation_ok
             or not higher_tf_agree or not mid_tf_not_opposed):
         blockers = []
         if not indication: blockers.append("body-based indication missing")
         if not correction_ok: blockers.append("correction/retest missing")
-        if not continuation_ok: blockers.append("continuation confirmation missing")
+        if not continuation_detected: blockers.append("continuation candle confirmation missing")
+        if not continuation_ok and indication and correction_ok:
+            blockers.append("ICC continuation stage not confirmed")
+        if continuation_detected and (not indication or not correction_ok):
+            blockers.append("continuation candle detected before the ICC sequence was complete")
         if not higher_tf_agree: blockers.append("4H and 1H trend must agree")
         if not mid_tf_not_opposed: blockers.append("15M trend opposes setup")
         if score < 72: blockers.append("confluence score below 72")
@@ -1075,11 +1084,14 @@ def analyze(symbol):
             "indication": indication,
             "correction": correction_ok,
             "continuation": continuation_ok,
+            "continuation_detected": continuation_detected,
+            "atr": round(atr_value, 6) if atr_value else None,
             "latest_close": round(frames["5min"][-1]["close"], 6),
             "confluence_checks": {
                 "indication": indication,
                 "correction": correction_ok,
                 "continuation": continuation_ok,
+                "continuation_detected": continuation_detected,
                 "higher_timeframes_agree": higher_tf_agree,
                 "15m_not_opposed": mid_tf_not_opposed
             },
