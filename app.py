@@ -62,6 +62,14 @@ def google_site_verification():
         {"Content-Type": "text/html; charset=utf-8"}
     )
 
+@app.route("/google95111ad6d9001347.html")
+def google_site_verification_new():
+    return (
+        "google-site-verification: google95111ad6d9001347.html",
+        200,
+        {"Content-Type": "text/html; charset=utf-8"}
+    )
+
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
 DB = "tw_blueprint.db"
