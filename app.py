@@ -8410,6 +8410,25 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
     try{ await window.scanSymbol(selectedAsset()); }
     catch(_e){ /* Visible error already rendered by scanSymbol. */ }
   };
+  window.runAI = async function(){
+    const output=$("aiOutput");
+    const payload=window.lastScan;
+    if(!payload){if(output)output.textContent="Run a market scan first.";return;}
+    if(output)output.textContent="AI analyst is processing the returned market evidence…";
+    try{
+      const controller=new AbortController();
+      const timer=setTimeout(function(){controller.abort();},65000);
+      let response;
+      try{
+        response=await fetch("/api/ai",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(payload),cache:"no-store",signal:controller.signal});
+      }finally{clearTimeout(timer);}
+      let data={};try{data=await response.json();}catch(_e){throw new Error("AI endpoint returned unreadable data.");}
+      if(!response.ok)throw new Error(data.text||data.message||("AI HTTP "+response.status));
+      if(output)output.textContent=data.text || "AI analysis unavailable. Check the OpenAI key and selected model in TW Control Center.";
+    }catch(error){
+      if(output)output.textContent="AI analysis unavailable: "+(error.name==="AbortError"?"request timed out":error.message)+". Check the OpenAI key/model in TW Control Center; no AI result is being assumed.";
+    }
+  };
   window.twRunLiveScanner = async function(){
     const grid=$("twScannerGrid");
     const status=$("twScannerStatus");
