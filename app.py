@@ -280,7 +280,6 @@ def init_db():
     """)
 
     defaults = {
-        "marketaux_key":"",
         "openai_key":"",
         "openai_model":"gpt-5.6",
         "deriv_app_id":"",
@@ -589,66 +588,102 @@ def td(symbol, interval, size=100):
     return biquote_candles(symbol, interval, size)
 
 # ============================================================
-# MARKET AUX
+# MARKET NEWS — GDELT DOC API (no API key required)
 # ============================================================
 
 def news(symbol):
-    key=get_setting("marketaux_key")
+    """Fetch current headlines from GDELT. News headlines are not treated as sentiment."""
+    if symbol not in ASSETS:
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "Unsupported instrument."}
 
-    if not key:
-        return {
-            "available":False,
-            "sentiment":0,
-            "articles":[]
-        }
-
+    # Human-readable terms produce more relevant results than broker-specific symbols.
+    queries = {
+        "XAU/USD": '(gold OR bullion OR "precious metals")',
+        "EUR/USD": '(euro OR EURUSD OR "European Central Bank")',
+        "GBP/USD": '(sterling OR GBPUSD OR "Bank of England")',
+        "USD/JPY": '(yen OR USDJPY OR "Bank of Japan")',
+        "GBP/JPY": '(sterling OR yen OR GBPJPY)',
+        "EUR/JPY": '(euro OR yen OR EURJPY)',
+        "EUR/AUD": '(euro OR Australian dollar OR EURAUD)',
+        "GBP/AUD": '(sterling OR Australian dollar OR GBPAUD)',
+        "USD/CHF": '(Swiss franc OR USDCHF OR SNB)',
+        "AUD/USD": '(Australian dollar OR AUDUSD OR RBA)',
+        "USD/CAD": '(Canadian dollar OR USDCAD OR Bank of Canada)',
+        "NASDAQ": '(Nasdaq OR technology stocks OR Nasdaq-100)',
+        "US30": '("Dow Jones" OR Dow30 OR DJIA)',
+        "S&P 500": '("S&P 500" OR SP500 OR "US stocks")',
+        "DAX40": '(DAX OR "German stocks")',
+        "FTSE100": '(FTSE OR "UK stocks")',
+        "VIX": '(VIX OR "market volatility")',
+        "BTC/USD": '(Bitcoin OR BTC OR cryptocurrency)',
+        "ETH/USD": '(Ethereum OR ETH OR cryptocurrency)',
+        "SOL/USD": '(Solana OR SOL cryptocurrency)',
+        "XRP/USD": '(XRP OR Ripple cryptocurrency)',
+        "ADA/USD": '(Cardano OR ADA cryptocurrency)',
+        "DOGE/USD": '(Dogecoin OR DOGE cryptocurrency)',
+        "Volatility 10 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 25 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 50 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 75 Index": '("synthetic indices" OR Deriv)',
+        "Volatility 100 Index": '("synthetic indices" OR Deriv)',
+        "Boom 500 Index": '("synthetic indices" OR Deriv)',
+        "Crash 500 Index": '("synthetic indices" OR Deriv)',
+        "Step Index": '("synthetic indices" OR Deriv)'
+    }
+    query = queries.get(symbol, ASSETS[symbol].get("news", symbol))
     try:
-        entity=ASSETS[symbol]["news"]
-
-        r=requests.get(
-            "https://api.marketaux.com/v1/news/all",
+        response = requests.get(
+            "https://api.gdeltproject.org/api/v2/doc/doc",
             params={
-                "api_token":key,
-                "symbols":entity,
-                "filter_entities":"true",
-                "language":"en",
-                "limit":10
+                "query": query,
+                "mode": "ArtList",
+                "format": "json",
+                "maxrecords": 10,
+                "sort": "HybridRel"
             },
-            timeout=15
+            timeout=12,
+            headers={"User-Agent": "TW-Trades-Intelligence/1.0"}
         )
-
-        r.raise_for_status()
-        data=r.json()
-        if not isinstance(data,dict) or data.get("error"):
-            return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux returned an API error. Check the key and account limits in Admin."}
-        articles=data.get("data",[])
-
-        scores=[]
-
-        for article in articles:
-            for ent in article.get("entities",[]):
-                s=ent.get("sentiment_score")
-
-                if isinstance(s,(int,float)):
-                    scores.append(float(s))
-
-        sentiment=(
-            sum(scores)/len(scores)
-            if scores else 0
-        )
-
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("GDELT returned an unexpected response.")
+        rows = payload.get("articles", [])
+        articles = []
+        for row in rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title") or "").strip()
+            url = str(row.get("url") or "").strip()
+            if not title or not url.startswith(("https://", "http://")):
+                continue
+            articles.append({
+                "title": title,
+                "url": url,
+                "description": "",
+                "snippet": "",
+                "published_at": row.get("seendate", ""),
+                "source": row.get("domain", "GDELT")
+            })
         return {
-            "available":True,
-            "sentiment":round(sentiment,3),
-            "articles":articles[:6]
+            "available": True,
+            "sentiment": 0,
+            "sentiment_available": False,
+            "articles": articles,
+            "source": "GDELT",
+            "message": "Headlines from GDELT. Sentiment scoring is not supplied by this source."
         }
-
     except requests.Timeout:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux timed out. Try again shortly."}
-    except requests.RequestException:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not be reached. Check the service and API key."}
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news request timed out. Retry shortly."}
+    except (requests.RequestException, ValueError):
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news is temporarily unavailable. Technical analysis remains separate."}
     except Exception:
-        return {"available":False,"sentiment":0,"articles":[],"message":"MarketAux could not process this request."}
+        app.logger.exception("GDELT news processing failed.")
+        return {"available": False, "sentiment": 0, "sentiment_available": False,
+                "articles": [], "source": "GDELT", "message": "GDELT news could not be processed."}
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -796,7 +831,7 @@ def fundamental_view(sent):
             "bias":"POSITIVE",
             "impact":"HIGH",
             "description":
-            "Recent MarketAux entity sentiment is materially positive."
+            "Recent GDELT entity sentiment is materially positive."
         }
 
     if sent>=0.10:
@@ -812,7 +847,7 @@ def fundamental_view(sent):
             "bias":"NEGATIVE",
             "impact":"HIGH",
             "description":
-            "Recent MarketAux entity sentiment is materially negative."
+            "Recent GDELT entity sentiment is materially negative."
         }
 
     if sent<=-0.10:
@@ -979,7 +1014,7 @@ def analyze(symbol):
         sell.append("Bearish continuation")
 
     n=news(symbol)
-    fund=fundamental_view(n["sentiment"])
+    fund=(fundamental_view(n["sentiment"]) if n.get("sentiment_available") else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"Headline source does not provide verified sentiment scores; sentiment excluded from scoring."})
 
     if n["sentiment"]>0.10:
         technical_buy+=5
@@ -1030,7 +1065,8 @@ def analyze(symbol):
             "trend15m":t15,
             "icc_state":icc_state,
             "fundamental":fund,
-            "news_sentiment":n["sentiment"] if n["available"] else None,
+            "news_source":n.get("source", "GDELT"),
+            "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
             "data_source":"BiQuote public OHLC feed",
             "news_available":n["available"],
             "message":"No signal: " + "; ".join(blockers) + "."
@@ -1083,8 +1119,9 @@ def analyze(symbol):
         },
         "data_source":"BiQuote public OHLC feed",
         "news_available":n["available"],
-        "fundamental":fund if n["available"] else {"bias":"UNAVAILABLE","impact":"UNKNOWN","description":"No verified news sentiment available; sentiment excluded from scoring."},
-        "news_sentiment":n["sentiment"] if n["available"] else None,
+        "fundamental":fund,
+        "news_source":n.get("source", "GDELT"),
+        "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
         "articles":n["articles"] if n["available"] else [],
         "reasons":reasons
     }
@@ -1770,7 +1807,6 @@ def admin():
     if request.method=="POST":
 
         for key in [
-            "marketaux_key",
             "openai_key",
             "openai_model",
             "deriv_app_id"
@@ -1794,7 +1830,6 @@ def admin():
 
     return render_template_string(
     ADMIN_HTML,
-    ma="********" if get_setting("marketaux_key") else "",
     ai="********" if get_setting("openai_key") else "",
     model=get_setting("openai_model"),
     deriv_app_id=get_setting("deriv_app_id")
@@ -2125,10 +2160,7 @@ font-size:32px !important;
 
 <form method="post">
 
-<label>MarketAux API Key</label>
-<input name="marketaux_key"
-value="{{ma}}"
-type="password">
+<p style="color:#9eacbd;font-size:13px">News source: GDELT public news search. No API key is required. Headlines are shown without fabricated sentiment scores.</p>
 
 <label>OpenAI API Key</label>
 <input name="openai_key"
@@ -2163,7 +2195,7 @@ type="password">
 <p>✓ Autonomy of Success Academy</p>
 <p>✓ Fundamental Intelligence</p>
 <p>✓ AI Analyst</p>
-<p>✓ MarketAux News</p>
+<p>✓ GDELT financial/news headlines (no API key required; sentiment not fabricated)</p>
 <p>✓ Public BiQuote candles for supported FX, metals and indices</p>
 <p>✓ Deriv public WebSocket candles for crypto and synthetic indices</p>
 <p>✓ 6-signal daily engine</p>
@@ -3140,7 +3172,7 @@ and entity sentiment.
 <div class="news" id="news">
 
 <div class="news-item">
-<h3>MarketAux Intelligence</h3>
+<h3>GDELT Market News</h3>
 <p class="muted">
 Select an instrument to load current financial
 news and sentiment.
@@ -3638,8 +3670,8 @@ const box=document.getElementById("news");
 if(!data.available || !data.articles?.length){
 
 const message=data.message || (!data.available
-  ? "Market news is not connected. Add a valid MarketAux API key in Admin to enable live headlines and sentiment."
-  : "MarketAux returned no matching articles for this instrument.");
+  ? "Live news is temporarily unavailable from GDELT. Retry shortly; no sentiment is inferred from headlines."
+  : "GDELT returned no matching current headlines for this instrument.");
 
 box.innerHTML=`
 <div class="news-item">
@@ -3656,7 +3688,7 @@ box.innerHTML=data.articles.map(a=>`
 <div class="news-item">
 
 <span class="tag">
-MARKETAUX
+${(a.source||data.source||"GDELT").replace(/[<>]/g,"")}
 </span>
 
 <h3>
@@ -3846,7 +3878,7 @@ through the connected market-data infrastructure.
 <div class="tw-intel">
 <strong>◈ Market News</strong>
 <span>
-Financial-news intelligence powered by the connected MarketAux
+Financial-news headlines powered by GDELT. Headlines are not sentiment scores.
 news service.
 </span>
 </div>
@@ -7329,13 +7361,17 @@ TikTok · @snowFx3
   }
 }
 
-/* HOMEPAGE CLEANUP: hide older duplicate terminals/scanners while retaining their code safely */
+/* HOMEPAGE CLEANUP: one canonical scanner/chart; suppress duplicate injected copies only. */
 #twRealTradingView,
 #twScannerDetails,
 #intelligence-terminal,
+#apex-dashboard,
+#tw-live-market-upgrade,
 #tw-live-terminal-v2 {
   display: none !important;
 }
+#terminal, #intelligence, #ai-intelligence { display:block; }
+
 
 </style>
 
