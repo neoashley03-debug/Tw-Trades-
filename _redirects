@@ -1,0 +1,3 @@
+# Proxy the static Netlify frontend API requests to the existing Flask/Render backend.
+# This keeps browser requests same-origin and avoids requiring public CORS configuration.
+/api/* https://tw-trades-1.onrender.com/api/:splat 200
