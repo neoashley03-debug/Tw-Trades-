@@ -679,7 +679,7 @@ def news(symbol):
         # Match short tickers/acronyms as words to avoid false matches such as
         # "SEC" inside "second" or "ether" inside "whether".
         if len(term) <= 4 and term.replace(" ", "").isalpha():
-            return re.search(r"\\b" + re.escape(term) + r"\\b", text) is not None
+            return re.search(r"\b" + re.escape(term) + r"\b", text) is not None
         return term in text
 
     positive_cues = (
