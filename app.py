@@ -2233,7 +2233,7 @@ font-size:32px !important;
 
 <form method="post">
 
-<p style="color:#9eacbd;font-size:13px">News source: GDELT public news search. No API key is required. Headlines are shown without fabricated sentiment scores.</p>
+<p style="color:#9eacbd;font-size:13px">News source: Yahoo Finance RSS. No API key is required. Headlines are shown without fabricated sentiment scores.</p>
 
 <label>OpenAI API Key</label>
 <input name="openai_key"
