@@ -54,10 +54,13 @@ app = Flask(__name__)
 def _security_headers(response):
     """Baseline security headers for every response.
 
-    The Content-Security-Policy is served in report-only mode: the workspace page
-    embeds TradingView widgets and inline scripts, so enforcing a policy without a
-    visual check could blank out the charts. Report-only records violations now so
-    the policy can be tightened and then enforced safely.
+    The Content-Security-Policy is enforced but deliberately permissive about
+    hosts: the workspace embeds TradingView widgets and inline scripts, so https:
+    is allowed for scripts, frames and connections rather than an enumerated host
+    list. What it does enforce is the part that cannot break a working page and
+    that matters most: no object/embed, no <base> hijacking, forms can only post
+    back to this origin, and the site cannot be framed by another origin. The
+    host allowlist can be tightened later once verified in a real browser.
     """
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -65,7 +68,7 @@ def _security_headers(response):
     response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault(
-        "Content-Security-Policy-Report-Only",
+        "Content-Security-Policy",
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
         "style-src 'self' 'unsafe-inline' https:; "
