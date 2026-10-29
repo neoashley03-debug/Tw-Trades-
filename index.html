@@ -7,11 +7,11 @@
 content="width=device-width, initial-scale=1.0">
 
 <meta name="description"
-content="TW Trades forex mentorship. Learn technical analysis, fundamental analysis, price action, market structure, risk management and trading discipline.">
+content="TW Trades market intelligence, Yahoo Finance news, structured ICC analysis, forex education and risk-first trading tools.">
 
 <meta name="theme-color" content="#090909">
 
-<title>TW Trades | Forex Mentorship</title>
+<title>TW Trades | Market Intelligence & Blueprint</title>
 
 <style>
 
@@ -342,6 +342,42 @@ footer {
 }
 
 </style>
+
+<style>
+/* TW TRADES DESIGN SYSTEM — additive overrides to preserve existing sections */
+:root{--tw-gold:#d6ad55;--tw-bg:#080b10;--tw-panel:#101922;--tw-border:#293847;--tw-muted:#9cabb9;--tw-green:#64dfaa}
+html{scroll-padding-top:90px}
+body{background:radial-gradient(ellipse at 50% -10%,rgba(50,67,83,.28),transparent 42%),#080b10;color:#f5f7fa}
+nav{gap:18px;flex-wrap:wrap;backdrop-filter:blur(16px);background:rgba(8,11,16,.94);border-bottom-color:rgba(214,173,85,.25)}
+nav>div:last-child{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px}
+nav a{padding:8px 10px;border-radius:8px;margin:0;transition:background .2s,color .2s}
+nav a:hover{background:rgba(214,173,85,.1)}
+.hero{background:radial-gradient(ellipse at 50% 25%,rgba(214,173,85,.14),transparent 38%),linear-gradient(180deg,#0c1118,#080b10 85%);min-height:72vh}
+.hero h1{letter-spacing:-2px}
+section{scroll-margin-top:85px}
+.section-title h2{letter-spacing:-.8px}
+.card,.price-box,.blueprint,.testimonial{box-shadow:0 12px 34px rgba(0,0,0,.16);transition:border-color .2s,transform .2s}
+.grid .card:hover{border-color:rgba(214,173,85,.5);transform:translateY(-3px)}
+#tw-intel,#tw-news{max-width:1100px;margin:32px auto;padding:clamp(18px,3vw,30px);background:linear-gradient(145deg,#111a24,#090d13);border:1px solid rgba(214,173,85,.25);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+#tw-intel .intel-card,#tw-news .news-card{background:rgba(16,25,34,.92);border-color:#293847}
+#tw-intel button,#tw-news button,#tw-news select{min-height:42px}
+#tw-intel button:disabled,#tw-news button:disabled{opacity:.65;cursor:wait}
+#tw-news .news-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
+#tw-news select{background:#0a1118;color:#f5f7fa;border:1px solid #344453;border-radius:9px;padding:10px 12px;min-width:150px}
+#tw-news .news-status{font-size:13px;color:var(--tw-muted);margin-top:14px}
+#tw-news .news-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+#tw-news .news-card{border:1px solid #293847;border-radius:14px;padding:18px;min-width:0}
+#tw-news .news-card h3{font-size:16px;line-height:1.45;margin:8px 0;color:#f5f7fa}
+#tw-news .news-card p{font-size:13px;line-height:1.65;color:#aebbc7;overflow-wrap:anywhere}
+#tw-news .news-meta{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--tw-green)}
+#tw-news .news-card a{display:inline-block;margin-top:12px;color:var(--tw-gold);font-size:13px;text-decoration:none;font-weight:700}
+#tw-news .news-card a:hover{text-decoration:underline}
+#tw-news .news-note{margin-top:18px;color:#8291a0;font-size:12px;line-height:1.6}
+#tw-news .news-empty{grid-column:1/-1;border:1px dashed #344453;border-radius:14px;padding:22px;color:#aebbc7}
+#tw-news .news-count{margin-left:auto;color:var(--tw-muted);font-size:12px}
+@media(max-width:700px){nav{padding:12px 4%}nav>div:last-child{justify-content:center}nav a{font-size:12px;padding:7px 8px}.hero{min-height:68vh}.hero p{font-size:17px}#tw-intel,#tw-news{margin:22px 12px;padding:17px}#tw-news .news-grid{grid-template-columns:1fr}#tw-news .news-count{width:100%;margin-left:0}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important}}
+</style>
 </head>
 
 <body>
@@ -353,11 +389,12 @@ TW <span>TRADES</span>
 </div>
 
 <div>
-<a href="#about">About</a>
-<a href="#learn">Learn</a>
+<a href="#tw-intel">Intelligence</a>
+<a href="#tw-news">Market News</a>
+<a href="#learn">Academy</a>
 <a href="#blueprint">Blueprint</a>
-<a href="#pricing">Pricing</a>
-<a href="#faq">FAQ</a>
+<a href="#pricing">Membership</a>
+<a href="#contact">Contact</a>
 </div>
 
 </nav>
@@ -555,6 +592,118 @@ price action, market structure, risk management and trading psychology.
       button.disabled = false;
     }
   });
+})();
+</script>
+<!-- END TW TRADES INTELLIGENCE DASHBOARD -->
+
+<!-- MARKET NEWS: Yahoo Finance headlines, no invented sentiment -->
+<section id="tw-news" aria-labelledby="tw-news-title">
+  <div class="intel-head">
+    <div>
+      <div class="intel-tag">MARKET CONTEXT · YAHOO FINANCE</div>
+      <h2 id="tw-news-title" style="margin:9px 0">Market News Intelligence</h2>
+      <p style="color:#9cabb9;margin:0">Read relevant headlines alongside your technical analysis.</p>
+    </div>
+    <button type="button" id="tw-news-refresh">Refresh headlines</button>
+  </div>
+  <div class="news-toolbar">
+    <label for="tw-news-symbol" style="color:#c9d5df;font-size:13px;font-weight:700">Instrument</label>
+    <select id="tw-news-symbol" aria-label="Choose instrument for market news">
+      <option value="XAU/USD">Gold · XAU/USD</option>
+      <option value="EUR/USD">EUR/USD</option><option value="GBP/USD">GBP/USD</option>
+      <option value="USD/JPY">USD/JPY</option><option value="GBP/JPY">GBP/JPY</option>
+      <option value="EUR/JPY">EUR/JPY</option><option value="EUR/AUD">EUR/AUD</option>
+      <option value="GBP/AUD">GBP/AUD</option><option value="USD/CHF">USD/CHF</option>
+      <option value="AUD/USD">AUD/USD</option><option value="USD/CAD">USD/CAD</option>
+      <option value="NASDAQ">NASDAQ</option><option value="US30">US30</option>
+      <option value="S&P 500">S&amp;P 500</option><option value="DAX40">DAX40</option>
+      <option value="FTSE100">FTSE100</option><option value="VIX">VIX</option>
+      <option value="BTC/USD">BTC/USD</option><option value="ETH/USD">ETH/USD</option>
+      <option value="SOL/USD">SOL/USD</option><option value="XRP/USD">XRP/USD</option>
+      <option value="ADA/USD">ADA/USD</option><option value="DOGE/USD">DOGE/USD</option>
+      <option value="Volatility 10 Index">Volatility 10 Index</option>
+      <option value="Volatility 25 Index">Volatility 25 Index</option>
+      <option value="Volatility 50 Index">Volatility 50 Index</option>
+      <option value="Volatility 75 Index">Volatility 75 Index</option>
+      <option value="Volatility 100 Index">Volatility 100 Index</option>
+      <option value="Boom 500 Index">Boom 500 Index</option>
+      <option value="Crash 500 Index">Crash 500 Index</option><option value="Step Index">Step Index</option>
+    </select>
+    <span id="tw-news-count" class="news-count">Waiting for feed</span>
+  </div>
+  <div id="tw-news-status" class="news-status" role="status" aria-live="polite">Select an instrument or refresh to load current headlines.</div>
+  <div id="tw-news-grid" class="news-grid">
+    <div class="news-empty">Headlines will appear here when the news service responds.</div>
+  </div>
+  <p class="news-note">Yahoo Finance headlines provide context, not a verified bullish/bearish score. News may be unavailable for synthetic instruments. No headline overrides TW Blueprint ICC confirmation, higher-timeframe checks, or risk controls.</p>
+</section>
+<script>
+(function(){
+  const button=document.getElementById("tw-news-refresh");
+  const symbol=document.getElementById("tw-news-symbol");
+  const status=document.getElementById("tw-news-status");
+  const grid=document.getElementById("tw-news-grid");
+  const count=document.getElementById("tw-news-count");
+  if(!button||!symbol||!status||!grid||!count)return;
+  function node(tag,className,text){
+    const el=document.createElement(tag);
+    if(className)el.className=className;
+    if(text!==undefined)el.textContent=String(text);
+    return el;
+  }
+  function displayDate(value){
+    if(!value)return "Publication time unavailable";
+    const d=new Date(value);
+    return Number.isNaN(d.getTime())?"Publication time unavailable":d.toLocaleString();
+  }
+  async function loadNews(){
+    button.disabled=true;
+    status.textContent="Connecting to Yahoo Finance news…";
+    count.textContent="Loading";
+    grid.replaceChildren(node("div","news-empty","Requesting headlines for "+symbol.value+"…"));
+    try{
+      const url="/api/news?symbol="+encodeURIComponent(symbol.value);
+      const response=await fetch(url,{headers:{Accept:"application/json"},cache:"no-store"});
+      if(!response.ok)throw new Error("News service returned HTTP "+response.status);
+      const data=await response.json();
+      if(!data||!Array.isArray(data.articles))throw new Error("Unexpected news response format");
+      const articles=data.articles;
+      count.textContent=articles.length+" headline"+(articles.length===1?"":"s");
+      status.textContent=data.available
+        ?(data.message||"Yahoo Finance headlines loaded.")
+        :(data.message||"News is unavailable for this instrument.");
+      grid.replaceChildren();
+      if(!articles.length){
+        grid.appendChild(node("div","news-empty",data.message||"No relevant headlines were returned. Try another instrument."));
+        return;
+      }
+      articles.forEach(function(article){
+        const card=node("article","news-card");
+        card.appendChild(node("div","news-meta",(article.source||data.source||"News")+" · "+displayDate(article.published_at)));
+        card.appendChild(node("h3","",article.title||"Untitled headline"));
+        const description=article.description||article.snippet||"No summary was supplied by the news provider.";
+        card.appendChild(node("p","",description.length>300?description.slice(0,297)+"…":description));
+        if(article.url){
+          try{
+            const parsed=new URL(article.url,window.location.href);
+            if(parsed.protocol==="https:"||parsed.protocol==="http:"){
+              const link=node("a","","Read article ↗");
+              link.href=parsed.href;link.target="_blank";link.rel="noopener noreferrer";
+              card.appendChild(link);
+            }
+          }catch(_e){}
+        }
+        grid.appendChild(card);
+      });
+    }catch(error){
+      count.textContent="Unavailable";
+      status.textContent="News could not be loaded. Check the service and try again.";
+      grid.replaceChildren(node("div","news-empty",error.message||"Unknown news error"));
+    }finally{button.disabled=false;}
+  }
+  button.addEventListener("click",loadNews);
+  symbol.addEventListener("change",loadNews);
+  loadNews();
 })();
 </script>
 <!-- END TW TRADES INTELLIGENCE DASHBOARD -->
