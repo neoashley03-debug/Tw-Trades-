@@ -614,12 +614,15 @@ def deriv_candles(symbol, interval, size=100):
 def yahoo_index_candles(symbol, interval, size=100):
     """Fetch actual Yahoo Finance index candles; build 4h bars from hourly OHLC."""
     import math
+    # Accept both display names and the short provider symbols used by ASSETS.
+    # Yahoo Finance ticker symbols are the source of real candles; no synthetic
+    # or fabricated OHLC bars are created when a provider is unavailable.
     index_tickers = {
-        "NASDAQ": "^IXIC",
-        "US30": "^DJI",
-        "S&P 500": "^GSPC",
-        "DAX40": "^GDAXI",
-        "FTSE100": "^FTSE",
+        "NASDAQ": "^IXIC", "IXIC": "^IXIC",
+        "US30": "^DJI", "DJI": "^DJI",
+        "S&P 500": "^GSPC", "SPX": "^GSPC",
+        "DAX40": "^GDAXI", "DAX": "^GDAXI",
+        "FTSE100": "^FTSE", "FTSE": "^FTSE",
         "VIX": "^VIX"
     }
     ticker = index_tickers.get(symbol)
