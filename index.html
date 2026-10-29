@@ -632,6 +632,7 @@ price action, market structure, risk management and trading psychology.
     <span id="tw-news-count" class="news-count">Waiting for feed</span>
   </div>
   <div id="tw-news-status" class="news-status" role="status" aria-live="polite">Select an instrument or refresh to load current headlines.</div>
+  <div id="tw-news-sentiment" class="news-status">Headline tone: unavailable</div>
   <div id="tw-news-grid" class="news-grid">
     <div class="news-empty">Headlines will appear here when the news service responds.</div>
   </div>
@@ -672,6 +673,12 @@ price action, market structure, risk management and trading psychology.
       status.textContent=data.available
         ?(data.message||"Yahoo Finance headlines loaded.")
         :(data.message||"News is unavailable for this instrument.");
+      const sentiment=document.getElementById("tw-news-sentiment");
+      if(sentiment){
+        sentiment.textContent=data.headline_sentiment_available
+          ?("Headline tone estimate: "+data.headline_sentiment+" ("+data.headline_sentiment_score+"/100) · based on "+data.headline_sentiment_sample+" headlines; informational only, not used for trade qualification.")
+          :"Headline tone estimate unavailable; not enough directional headlines. No sentiment is inferred.";
+      }
       grid.replaceChildren();
       if(!articles.length){
         grid.appendChild(node("div","news-empty",data.message||"No relevant headlines were returned. Try another instrument."));
