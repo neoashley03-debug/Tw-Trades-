@@ -48,6 +48,36 @@ def send_discord_signal(signal):
         return False
 
 app = Flask(__name__)
+
+
+@app.after_request
+def _security_headers(response):
+    """Baseline security headers for every response.
+
+    The Content-Security-Policy is served in report-only mode: the workspace page
+    embeds TradingView widgets and inline scripts, so enforcing a policy without a
+    visual check could blank out the charts. Report-only records violations now so
+    the policy can be tightened and then enforced safely.
+    """
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy-Report-Only",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' data: https:; "
+        "frame-src 'self' https:; "
+        "connect-src 'self' https:; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    )
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 @app.route("/robots.txt")
 def robots_txt():
     from flask import Response
@@ -103,6 +133,115 @@ def _load_secret_key():
 
 
 app.secret_key = _load_secret_key()
+
+# Session cookie hygiene. Secure is switched on for HTTPS hosts so local http
+# testing still works.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+if (os.environ.get("RENDER", "").strip().lower() in ("1", "true", "yes")
+        or os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes")):
+    app.config["SESSION_COOKIE_SECURE"] = True
+
+
+# ============================================================
+# PASSWORD HASHING
+#
+# Single-round unsalted SHA-256 is fast to brute force and identical passwords
+# produced identical hashes. PBKDF2-HMAC-SHA256 with a per-password salt and a
+# high iteration count replaces it. Legacy hashes still verify and are upgraded
+# on the owner's next successful login.
+# ============================================================
+
+PBKDF2_ITERATIONS = 260000
+PBKDF2_PREFIX = "pbkdf2_sha256$"
+
+
+def _hash_password(password):
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), PBKDF2_ITERATIONS
+    ).hex()
+    return PBKDF2_PREFIX + str(PBKDF2_ITERATIONS) + "$" + salt + "$" + digest
+
+
+def _needs_rehash(stored):
+    return not stored or not str(stored).startswith(PBKDF2_PREFIX)
+
+
+def _verify_password(password, stored):
+    """Verify a password against a PBKDF2 or legacy SHA-256 hash."""
+    if not password or not stored:
+        return False
+    stored = str(stored)
+    if stored.startswith(PBKDF2_PREFIX):
+        try:
+            _, iterations, salt, digest = stored.split("$", 3)
+            calculated = hashlib.pbkdf2_hmac(
+                "sha256", password.encode("utf-8"), salt.encode("utf-8"), int(iterations)
+            ).hex()
+            return secrets.compare_digest(calculated, digest)
+        except (ValueError, TypeError):
+            return False
+    legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return secrets.compare_digest(legacy, stored)
+
+
+# ============================================================
+# LOGIN THROTTLING
+#
+# Per-process, in-memory, and deliberately simple. It raises the cost of
+# guessing without needing extra infrastructure.
+# ============================================================
+
+LOGIN_MAX_FAILURES = 8
+LOGIN_WINDOW_SECONDS = 900
+
+_LOGIN_ATTEMPTS = {}
+_LOGIN_LOCK = threading.Lock()
+
+
+def _client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _login_blocked(scope, client):
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        failures = [t for t in _LOGIN_ATTEMPTS.get((scope, client), [])
+                    if now - t < LOGIN_WINDOW_SECONDS]
+        _LOGIN_ATTEMPTS[(scope, client)] = failures
+        return len(failures) >= LOGIN_MAX_FAILURES
+
+
+def _login_failed(scope, client):
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        _LOGIN_ATTEMPTS.setdefault((scope, client), []).append(now)
+
+
+def _login_succeeded(scope, client):
+    with _LOGIN_LOCK:
+        _LOGIN_ATTEMPTS.pop((scope, client), None)
+
+
+def _too_many_attempts_page():
+    return (
+        "<!doctype html><html><head><meta name=\"viewport\" "
+        "content=\"width=device-width,initial-scale=1\"><title>Too many attempts</title>"
+        "<style>body{margin:0;min-height:100vh;display:flex;align-items:center;"
+        "justify-content:center;background:#05070b;color:#edf3fb;font-family:Arial}"
+        ".box{max-width:420px;padding:28px;border:1px solid #203348;border-radius:18px;"
+        "background:#0b1119}p{color:#aab7c8;line-height:1.6}"
+        "a{color:#00ffd0}</style></head><body><main class=\"box\">"
+        "<h1>Too many attempts</h1><p>Too many failed sign-in attempts from this "
+        "connection. Wait 15 minutes and try again.</p>"
+        "<p><a href=\"/\">Back to TW Trades</a></p></main></body></html>"
+    )
 
 DB = "tw_blueprint.db"
 
@@ -339,6 +478,18 @@ def init_db():
         c.execute(
             "INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)",
             (k,v)
+        )
+
+    # A shipped default password is a known credential. Warn loudly rather than
+    # silently accepting it, and never reset a password the owner already set.
+    seeded = c.execute(
+        "SELECT value FROM settings WHERE key='admin_password_hash'"
+    ).fetchone()
+    legacy_default = hashlib.sha256(b"change-me").hexdigest()
+    if seeded and str(seeded["value"]) == legacy_default and not os.environ.get("ADMIN_PASSWORD"):
+        app.logger.warning(
+            "Admin password is still the shipped default. Set ADMIN_PASSWORD in the "
+            "environment, or sign in and change it in TW Control Center."
         )
 
     c.commit()
@@ -2300,8 +2451,27 @@ def api_ai():
         ai_analysis(payload)
     )
 
+def _commit_authorised():
+    """Committing a signal must be authenticated.
+
+    Either an admin session, or a shared token from COMMIT_API_TOKEN supplied as
+    X-API-Token (or a Bearer token) for an external poster.
+    """
+    token = os.environ.get("COMMIT_API_TOKEN", "").strip()
+    if token:
+        supplied = (request.headers.get("X-API-Token", "").strip()
+                    or request.headers.get("Authorization", "").replace("Bearer ", "").strip())
+        return bool(supplied) and secrets.compare_digest(supplied, token)
+    return bool(session.get("admin"))
+
+
 @app.route("/api/commit",methods=["POST"])
 def commit():
+
+    if not _commit_authorised():
+        return jsonify({
+            "error": "Unauthorised. Sign in as admin, or configure COMMIT_API_TOKEN and send it as X-API-Token."
+        }), 401
 
     data=request.get_json(
         force=True,
@@ -2387,25 +2557,29 @@ def commit():
 def login():
     if request.method == "POST":
         password = request.form.get("password", "")
+        client = _client_ip()
 
-        hashed = hashlib.sha256(
-            password.encode()
-        ).hexdigest()
+        if _login_blocked("admin", client):
+            return _too_many_attempts_page(), 429
+
+        stored = get_setting("admin_password_hash")
 
         # Allow the owner to recover admin access using a private Render
         # environment variable. On successful recovery, sync the database hash.
         recovery_password = os.environ.get("ADMIN_PASSWORD", "")
-        if (
-            hashed == get_setting("admin_password_hash")
-            or (
-                recovery_password
-                and secrets.compare_digest(password, recovery_password)
-            )
-        ):
-            if recovery_password and secrets.compare_digest(password, recovery_password):
-                set_setting("admin_password_hash", hashed)
+        ok_stored = _verify_password(password, stored)
+        ok_recovery = bool(recovery_password) and secrets.compare_digest(password, recovery_password)
+
+        if ok_stored or ok_recovery:
+            _login_succeeded("admin", client)
+            # Migrate a legacy SHA-256 hash, or the recovery password, to PBKDF2.
+            if ok_recovery or _needs_rehash(stored):
+                set_setting("admin_password_hash", _hash_password(password))
+            session.clear()
             session["admin"] = True
             return redirect("/admin")
+
+        _login_failed("admin", client)
 
         return """
         <!doctype html>
@@ -2583,9 +2757,7 @@ def admin():
         if password:
             set_setting(
                 "admin_password_hash",
-                hashlib.sha256(
-                    password.encode()
-                ).hexdigest()
+                _hash_password(password)
             )
 
     return render_template_string(
@@ -8131,12 +8303,13 @@ TikTok · @snowFx3
 #twRealTradingView,
 #twScannerDetails,
 #intelligence-terminal,
-#apex-dashboard,
 #tw-live-market-upgrade,
 #tw-live-terminal-v2 {
   display: none !important;
 }
-#terminal, #intelligence, #ai-intelligence { display:block; }
+/* #apex-dashboard is a unique top-level section linked from the primary
+   navigation, so it is intentionally not suppressed here. */
+#terminal, #intelligence, #ai-intelligence, #apex-dashboard { display:block; }
 
 
 </style>
@@ -8623,14 +8796,19 @@ def user_access():
             else:
                 try:
                     c.execute("INSERT INTO users(email,password_hash,display_name,access_level,access_status,created_at) VALUES(?,?,?,'free','active',?)",
-                        (email, hashlib.sha256(password.encode()).hexdigest(), name, datetime.now(timezone.utc).isoformat()))
+                        (email, _hash_password(password), name, datetime.now(timezone.utc).isoformat()))
                     c.commit()
                 except sqlite3.IntegrityError:
                     message = "That email is already registered. Please log in."
         if not message and action == "login":
             user = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-            digest = hashlib.sha256(password.encode()).hexdigest()
-            if user and secrets.compare_digest(user["password_hash"], digest):
+            if user and _verify_password(password, user["password_hash"]):
+                # Upgrade a legacy SHA-256 hash on the owner's next login.
+                if _needs_rehash(user["password_hash"]):
+                    c.execute("UPDATE users SET password_hash=? WHERE id=?",
+                              (_hash_password(password), user["id"]))
+                    c.commit()
+                session.clear()
                 session["user_id"] = user["id"]
                 session["user_email"] = user["email"]
                 session["user_name"] = user["display_name"]
