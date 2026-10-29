@@ -342,6 +342,60 @@ footer {
 }
 
 </style>
+<style>
+
+/* TW TRADES PREMIUM REFRESH — additive styling, existing sections and scanner preserved */
+:root{color-scheme:dark;--tw-gold:#e5bd63;--tw-gold-soft:#9d7b37;--tw-panel:rgba(17,22,29,.82);--tw-line:rgba(229,189,99,.18)}
+html{scroll-padding-top:100px}
+body{background:#07090c;background-image:radial-gradient(ellipse at 8% 5%,rgba(43,57,73,.22),transparent 34%),radial-gradient(ellipse at 90% 35%,rgba(123,86,26,.12),transparent 30%);background-attachment:fixed}
+nav{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background:rgba(7,9,12,.86);border-bottom:1px solid rgba(229,189,99,.18);padding:17px clamp(18px,5vw,72px)}
+.logo{font-size:20px;letter-spacing:2.5px}
+nav a{transition:color .2s ease,opacity .2s ease}
+nav a:hover{color:var(--tw-gold)}
+.hero{position:relative;isolation:isolate;overflow:hidden;min-height:84vh;background:radial-gradient(ellipse at 50% 12%,rgba(148,108,37,.22),transparent 42%),linear-gradient(180deg,#0b0e13 0%,#07090c 100%)}
+.hero:before{content:"";position:absolute;inset:0;z-index:-1;opacity:.18;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:46px 46px;mask-image:linear-gradient(to bottom,black,transparent 90%)}
+.hero:after{content:"";position:absolute;z-index:-1;width:min(68vw,680px);aspect-ratio:1;border:1px solid rgba(229,189,99,.12);border-radius:50%;left:50%;top:50%;transform:translate(-50%,-42%);box-shadow:0 0 0 55px rgba(229,189,99,.018),0 0 0 110px rgba(229,189,99,.012)}
+.hero-content{position:relative;max-width:960px}
+.badge{background:rgba(229,189,99,.06);border-color:rgba(229,189,99,.35);font-size:11px;font-weight:700;letter-spacing:2.2px}
+.hero h1{letter-spacing:-2.8px;text-wrap:balance}
+.gold,.card h3,.social a{color:var(--tw-gold)}
+.hero p{font-size:clamp(16px,2vw,20px);line-height:1.8;color:#b8c0ca}
+.btn{border-radius:10px;padding:15px 24px;font-size:12px;letter-spacing:.7px;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+.primary{background:linear-gradient(135deg,#f0d48b,#c59a43);box-shadow:0 10px 35px rgba(197,154,67,.16)}
+.primary:hover{box-shadow:0 14px 38px rgba(197,154,67,.25)}
+.secondary{border-color:#3b424c;background:rgba(255,255,255,.025)}
+section{padding:clamp(58px,8vw,94px) clamp(18px,3vw,30px)}
+.section-title{margin-bottom:38px}
+.section-title h2{font-size:clamp(28px,4vw,42px);letter-spacing:-1.2px}
+.section-title p{max-width:650px;margin:0 auto;line-height:1.8}
+.grid{gap:16px}
+.card,.price-box,.testimonial{background:linear-gradient(145deg,rgba(20,25,32,.92),rgba(11,14,19,.96));border:1px solid rgba(255,255,255,.085);box-shadow:0 16px 45px rgba(0,0,0,.16);transition:transform .22s ease,border-color .22s ease,background .22s ease}
+.card{border-radius:16px;padding:clamp(22px,3vw,30px)}
+.card:hover{transform:translateY(-4px);border-color:rgba(229,189,99,.32)}
+.card p{line-height:1.8}
+.icon{font-size:28px}
+.blueprint{background:radial-gradient(ellipse at top left,rgba(145,105,34,.16),transparent 55%),linear-gradient(145deg,#14171c,#0a0c10);border-color:rgba(229,189,99,.3);box-shadow:0 18px 50px rgba(0,0,0,.18)}
+.number{background:linear-gradient(135deg,#f0d48b,#c59a43)}
+#tw-intel{position:relative;overflow:hidden;margin:28px auto;background:radial-gradient(ellipse at 100% 0%,rgba(46,78,91,.18),transparent 40%),linear-gradient(145deg,#10151c,#080b10);border-color:rgba(229,189,99,.25);box-shadow:0 22px 70px rgba(0,0,0,.3)}
+#tw-intel .intel-tag{font-weight:800;letter-spacing:2.3px}
+#tw-intel .intel-card{background:rgba(255,255,255,.025);border-color:rgba(255,255,255,.09);transition:border-color .2s ease,transform .2s ease}
+#tw-intel .intel-card:hover{border-color:rgba(229,189,99,.35);transform:translateY(-2px)}
+#tw-intel .intel-value{letter-spacing:-.5px}
+#tw-intel button{background:linear-gradient(135deg,#f0d48b,#c59a43);transition:filter .2s ease,transform .2s ease}
+#tw-intel button:hover{filter:brightness(1.08);transform:translateY(-1px)}
+#tw-intel button:disabled{opacity:.65;cursor:wait;transform:none}
+#tw-scan-results{padding:16px;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:rgba(0,0,0,.18);min-height:70px}
+.price-box{border-color:rgba(229,189,99,.34);border-radius:22px}
+.price{color:var(--tw-gold)}
+.faq{border-color:rgba(255,255,255,.09)}
+footer{background:#050609;border-top-color:rgba(229,189,99,.18)}
+.whatsapp{box-shadow:0 8px 28px rgba(0,0,0,.35);transition:transform .2s ease}
+.whatsapp:hover{transform:translateY(-3px)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--tw-gold);outline-offset:4px}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+@media(max-width:700px){nav{padding:13px 14px}nav a{font-size:12px}.hero h1{letter-spacing:-1.8px}.hero p{font-size:16px}.btn{width:min(100%,320px);margin:6px auto}.hero-content{width:100%}#tw-intel{margin:14px 12px;padding:18px}.section-title h2{letter-spacing:-.7px}}
+
+</style>
 </head>
 
 <body>
@@ -354,6 +408,7 @@ TW <span>TRADES</span>
 
 <div>
 <a href="#about">About</a>
+<a href="#tw-intel">Intelligence</a>
 <a href="#learn">Learn</a>
 <a href="#blueprint">Blueprint</a>
 <a href="#pricing">Pricing</a>
@@ -390,6 +445,10 @@ JOIN FOR R300 / MONTH
 
 <a class="btn secondary" href="#learn">
 EXPLORE MENTORSHIP
+</a>
+
+<a class="btn secondary" href="#tw-intel">
+OPEN INTELLIGENCE TERMINAL
 </a>
 
 </div>
@@ -497,6 +556,21 @@ price action, market structure, risk management and trading psychology.
     </div>
   </div>
 
+  <div class="intel-grid" style="margin-top:18px">
+    <div class="intel-card" style="grid-column:1/-1">
+      <div class="intel-label">TW BLUEPRINT · READ-ONLY ICC ANALYSIS</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <label for="tw-symbol" style="color:#9cabb9;align-self:center">Instrument</label>
+        <select id="tw-symbol" style="background:#0a1016;color:#f5f5f5;border:1px solid #34414e;border-radius:9px;padding:11px;min-width:150px">
+          <option>XAU/USD</option><option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option><option>GBP/JPY</option><option>EUR/JPY</option><option>EUR/AUD</option><option>GBP/AUD</option><option>USD/CHF</option><option>AUD/USD</option><option>USD/CAD</option><option>NASDAQ</option><option>US30</option><option>S&amp;P 500</option><option>DAX40</option><option>FTSE100</option><option>VIX</option><option>BTC/USD</option><option>ETH/USD</option><option>SOL/USD</option><option>XRP/USD</option><option>ADA/USD</option><option>DOGE/USD</option>
+        </select>
+        <button type="button" id="tw-run-blueprint">Analyze Instrument</button>
+        <button type="button" id="tw-load-news" style="background:transparent;color:#e5bd63;border:1px solid #8e7138">Load Headlines</button>
+      </div>
+      <div id="tw-blueprint-output" aria-live="polite" style="margin-top:15px;color:#c9d5df;line-height:1.8">Choose an instrument and run read-only analysis. No signal is created or saved by this panel.</div>
+      <div id="tw-news-output" aria-live="polite" style="margin-top:12px;color:#aeb9c5;line-height:1.7"></div>
+    </div>
+  </div>
   <div id="tw-scan-results" aria-live="polite">
     Select Run Scan to request current results from the server.
   </div>
@@ -522,7 +596,7 @@ price action, market structure, risk management and trading psychology.
     output.textContent = "Requesting scanner data from the server…";
 
     try {
-      const response = await fetch("/api/scan", {
+      const response = await fetch("https://tw-trades-1.onrender.com/api/scan", {
         headers: { "Accept": "application/json" },
         cache: "no-store"
       });
@@ -554,6 +628,67 @@ price action, market structure, risk management and trading psychology.
     } finally {
       button.disabled = false;
     }
+  });
+
+  const apiBase = "https://tw-trades-1.onrender.com";
+  const symbolPicker = document.getElementById("tw-symbol");
+  const blueprintButton = document.getElementById("tw-run-blueprint");
+  const blueprintOutput = document.getElementById("tw-blueprint-output");
+  const newsButton = document.getElementById("tw-load-news");
+  const newsOutput = document.getElementById("tw-news-output");
+  function safeText(value) {
+    return value === null || value === undefined || value === "" ? "Unavailable" : String(value);
+  }
+
+  if (blueprintButton) blueprintButton.addEventListener("click", async function () {
+    blueprintButton.disabled = true;
+    blueprintOutput.textContent = "Requesting live TW Blueprint analysis…";
+    try {
+      const response = await fetch(apiBase + "/api/blueprint?symbol=" + encodeURIComponent(symbolPicker.value), {
+        headers: {"Accept":"application/json"}, cache:"no-store"
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || ("HTTP " + response.status));
+      const checks = data.confluence_checks || {};
+      const checksText = Object.keys(checks).length
+        ? Object.entries(checks).map(([key,value]) => key + ": " + (value === true ? "PASS" : value === false ? "NO" : safeText(value))).join(" · ")
+        : "Confluence detail not supplied";
+      blueprintOutput.textContent =
+        "Instrument: " + safeText(data.symbol) + " | Status: " + safeText(data.status) +
+        " | Direction: " + safeText(data.direction) + " | Score: " + safeText(data.score) + "\n" +
+        "ICC: " + safeText(data.icc_state) + " | Indication: " + safeText(data.indication) +
+        " | Correction: " + safeText(data.correction) + " | Continuation: " + safeText(data.continuation) + "\n" +
+        "4H trend: " + safeText(data.trend4h) + " | 1H trend: " + safeText(data.trend1h) +
+        " | 15m trend: " + safeText(data.trend15m) + "\n" +
+        "Entry: " + safeText(data.entry) + " | Stop: " + safeText(data.stop) +
+        " | TP1: " + safeText(data.tp1) + " | TP2: " + safeText(data.tp2) + "\n" +
+        "Price data: " + safeText(data.data_source) + " | News source: " + safeText(data.news_source) + "\n" +
+        "Checks: " + checksText + "\n" + safeText(data.message) +
+        "\nRead-only analysis. Verify data freshness and broker pricing before acting.";
+    } catch (error) {
+      blueprintOutput.textContent = "Live analysis unavailable: " + error.message +
+        ". The Render service may be waking up or cross-origin access may need configuration.";
+    } finally { blueprintButton.disabled = false; }
+  });
+
+  if (newsButton) newsButton.addEventListener("click", async function () {
+    newsButton.disabled = true;
+    newsOutput.textContent = "Loading current headlines…";
+    try {
+      const response = await fetch(apiBase + "/api/news?symbol=" + encodeURIComponent(symbolPicker.value), {
+        headers: {"Accept":"application/json"}, cache:"no-store"
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || ("HTTP " + response.status));
+      const articles = Array.isArray(data.articles) ? data.articles : [];
+      newsOutput.textContent = articles.length
+        ? "Headlines (" + safeText(data.source || data.news_source || "source not supplied") + "):\n" +
+          articles.slice(0,5).map((item,index) => (index+1) + ". " + safeText(item.title) +
+            (item.url ? " — " + item.url : "")).join("\n")
+        : "No current headlines returned. " + safeText(data.message || "No headlines available from the source.");
+    } catch (error) {
+      newsOutput.textContent = "Headlines unavailable: " + error.message;
+    } finally { newsButton.disabled = false; }
   });
 })();
 </script>
