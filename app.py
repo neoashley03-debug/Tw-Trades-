@@ -2,6 +2,9 @@ import os
 import sqlite3
 import secrets
 import hashlib
+import threading
+import time
+import xml.etree.ElementTree as ET
 import requests
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, session, redirect, render_template_string
@@ -45,6 +48,39 @@ def send_discord_signal(signal):
         return False
 
 app = Flask(__name__)
+
+
+@app.after_request
+def _security_headers(response):
+    """Baseline security headers for every response.
+
+    The Content-Security-Policy is enforced but deliberately permissive about
+    hosts: the workspace embeds TradingView widgets and inline scripts, so https:
+    is allowed for scripts, frames and connections rather than an enumerated host
+    list. What it does enforce is the part that cannot break a working page and
+    that matters most: no object/embed, no <base> hijacking, forms can only post
+    back to this origin, and the site cannot be framed by another origin. The
+    host allowlist can be tightened later once verified in a real browser.
+    """
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' data: https:; "
+        "frame-src 'self' https:; "
+        "connect-src 'self' https:; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    )
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 @app.route("/robots.txt")
 def robots_txt():
     from flask import Response
@@ -62,12 +98,178 @@ def google_site_verification():
         {"Content-Type": "text/html; charset=utf-8"}
     )
 
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
+def _load_secret_key():
+    """Return one signing key shared by every gunicorn worker.
 
-DB = "tw_blueprint.db"
+    A random per-process key makes sessions fail intermittently (worker A signs
+    a cookie that worker B rejects) and logs everyone out on every restart.
+    The durable fix is setting FLASK_SECRET_KEY in the environment; until then
+    persist a generated key so all workers on this instance agree.
+    """
+    configured = os.environ.get("FLASK_SECRET_KEY", "").strip()
+    if configured:
+        return configured
+
+    key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".flask_secret_key")
+    try:
+        if os.path.exists(key_path):
+            stored = open(key_path, encoding="utf-8").read().strip()
+            if stored:
+                return stored
+        generated = secrets.token_hex(32)
+        with open(key_path, "w", encoding="utf-8") as handle:
+            handle.write(generated)
+        os.chmod(key_path, 0o600)
+        app.logger.warning(
+            "FLASK_SECRET_KEY is not set. Using a generated key stored at %s. "
+            "Set FLASK_SECRET_KEY in the environment for sessions that survive restarts.",
+            key_path,
+        )
+        return generated
+    except OSError as exc:
+        app.logger.warning(
+            "FLASK_SECRET_KEY is not set and the generated key could not be stored (%s). "
+            "Sessions will break across workers until FLASK_SECRET_KEY is configured.",
+            exc,
+        )
+        return secrets.token_hex(32)
+
+
+app.secret_key = _load_secret_key()
+
+# Session cookie hygiene. Secure is switched on for HTTPS hosts so local http
+# testing still works.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+if (os.environ.get("RENDER", "").strip().lower() in ("1", "true", "yes")
+        or os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes")):
+    app.config["SESSION_COOKIE_SECURE"] = True
+
+
+# ============================================================
+# PASSWORD HASHING
+#
+# Single-round unsalted SHA-256 is fast to brute force and identical passwords
+# produced identical hashes. PBKDF2-HMAC-SHA256 with a per-password salt and a
+# high iteration count replaces it. Legacy hashes still verify and are upgraded
+# on the owner's next successful login.
+# ============================================================
+
+PBKDF2_ITERATIONS = 260000
+PBKDF2_PREFIX = "pbkdf2_sha256$"
+
+
+def _hash_password(password):
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), PBKDF2_ITERATIONS
+    ).hex()
+    return PBKDF2_PREFIX + str(PBKDF2_ITERATIONS) + "$" + salt + "$" + digest
+
+
+def _needs_rehash(stored):
+    return not stored or not str(stored).startswith(PBKDF2_PREFIX)
+
+
+def _verify_password(password, stored):
+    """Verify a password against a PBKDF2 or legacy SHA-256 hash."""
+    if not password or not stored:
+        return False
+    stored = str(stored)
+    if stored.startswith(PBKDF2_PREFIX):
+        try:
+            _, iterations, salt, digest = stored.split("$", 3)
+            calculated = hashlib.pbkdf2_hmac(
+                "sha256", password.encode("utf-8"), salt.encode("utf-8"), int(iterations)
+            ).hex()
+            return secrets.compare_digest(calculated, digest)
+        except (ValueError, TypeError):
+            return False
+    legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return secrets.compare_digest(legacy, stored)
+
+
+# ============================================================
+# LOGIN THROTTLING
+#
+# Per-process, in-memory, and deliberately simple. It raises the cost of
+# guessing without needing extra infrastructure.
+# ============================================================
+
+LOGIN_MAX_FAILURES = 8
+LOGIN_WINDOW_SECONDS = 900
+
+_LOGIN_ATTEMPTS = {}
+_LOGIN_LOCK = threading.Lock()
+
+
+def _client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _login_blocked(scope, client):
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        failures = [t for t in _LOGIN_ATTEMPTS.get((scope, client), [])
+                    if now - t < LOGIN_WINDOW_SECONDS]
+        _LOGIN_ATTEMPTS[(scope, client)] = failures
+        return len(failures) >= LOGIN_MAX_FAILURES
+
+
+def _login_failed(scope, client):
+    now = time.monotonic()
+    with _LOGIN_LOCK:
+        _LOGIN_ATTEMPTS.setdefault((scope, client), []).append(now)
+
+
+def _login_succeeded(scope, client):
+    with _LOGIN_LOCK:
+        _LOGIN_ATTEMPTS.pop((scope, client), None)
+
+
+def _too_many_attempts_page():
+    return (
+        "<!doctype html><html><head><meta name=\"viewport\" "
+        "content=\"width=device-width,initial-scale=1\"><title>Too many attempts</title>"
+        "<style>body{margin:0;min-height:100vh;display:flex;align-items:center;"
+        "justify-content:center;background:#05070b;color:#edf3fb;font-family:Arial}"
+        ".box{max-width:420px;padding:28px;border:1px solid #203348;border-radius:18px;"
+        "background:#0b1119}p{color:#aab7c8;line-height:1.6}"
+        "a{color:#00ffd0}</style></head><body><main class=\"box\">"
+        "<h1>Too many attempts</h1><p>Too many failed sign-in attempts from this "
+        "connection. Wait 15 minutes and try again.</p>"
+        "<p><a href=\"/\">Back to TW Trades</a></p></main></body></html>"
+    )
+
+# The database path must not depend on the process working directory: a
+# relative path silently creates a second, empty database whenever the app is
+# started from elsewhere. It is anchored to this file, and can be pointed at a
+# persistent disk with TW_DATABASE_PATH / DATABASE_PATH / DB_PATH.
+def _resolve_db_path():
+    for env_key in ("TW_DATABASE_PATH", "DATABASE_PATH", "DB_PATH"):
+        candidate = os.environ.get(env_key, "").strip()
+        if candidate:
+            return os.path.abspath(os.path.expanduser(candidate))
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "tw_blueprint.db")
+
+
+DB = _resolve_db_path()
+SCHEMA_VERSION = "2"
 
 MAX_DAILY = 6
 MAX_PER_SESSION = 2
+
+# Confluence floor for a promoted signal. The published scoring table is
+# 4H 20 + 1H 15 + 15M 15 + indication 15 + correction 8 + continuation 12 = 85.
+# A setup that clears every mandatory structure gate therefore scores at least
+# 70 (85 when the 15M trend is aligned rather than neutral), so the floor is a
+# guard rather than a second, stricter gate layered on top of ICC.
+MIN_CONFLUENCE = 70
 
 SESSIONS = {
     "ASIAN": (0, 8),
@@ -237,8 +439,18 @@ COURSES = [
 # ============================================================
 
 def db():
-    c = sqlite3.connect(DB)
+    """Open a connection tolerant of concurrent readers and writers.
+
+    The scanner persists signals from worker threads while requests are served,
+    so a write collision should wait for the lock rather than raise.
+    """
+    c = sqlite3.connect(DB, timeout=15)
     c.row_factory = sqlite3.Row
+    try:
+        c.execute("PRAGMA busy_timeout=15000")
+        c.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.DatabaseError:
+        app.logger.warning("SQLite WAL mode could not be enabled.")
     return c
 
 def init_db():
@@ -294,8 +506,120 @@ def init_db():
             (k,v)
         )
 
+    # A shipped default password is a known credential. Warn loudly rather than
+    # silently accepting it, and never reset a password the owner already set.
+    seeded = c.execute(
+        "SELECT value FROM settings WHERE key='admin_password_hash'"
+    ).fetchone()
+    legacy_default = hashlib.sha256(b"change-me").hexdigest()
+    if seeded and str(seeded["value"]) == legacy_default and not os.environ.get("ADMIN_PASSWORD"):
+        app.logger.warning(
+            "Admin password is still the shipped default. Set ADMIN_PASSWORD in the "
+            "environment, or sign in and change it in TW Control Center."
+        )
+
+    _migrate_schema(c)
+
+    # Read the state directly: get_setting() is defined further down the module
+    # and is not available yet while init_db() runs at import time.
+    try:
+        state_row = c.execute(
+            "SELECT value FROM settings WHERE key='admin_hash_state'"
+        ).fetchone()
+        hash_state = state_row["value"] if state_row else "unknown"
+    except sqlite3.DatabaseError:
+        hash_state = "unknown"
+
     c.commit()
     c.close()
+
+    app.logger.info("Database ready at %s (schema %s, password hashes %s)",
+                    DB, SCHEMA_VERSION, hash_state)
+
+
+def _ensure_columns(c, table, columns):
+    """Add only missing columns. Never drops, renames or rewrites anything."""
+    try:
+        existing = {row[1] for row in c.execute("PRAGMA table_info(" + table + ")")}
+    except sqlite3.DatabaseError:
+        return []
+    added = []
+    for name, declaration in columns:
+        if name in existing:
+            continue
+        try:
+            c.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + declaration)
+            added.append(name)
+        except sqlite3.DatabaseError:
+            app.logger.warning("Could not add column %s.%s during migration.", table, name)
+    return added
+
+
+def password_hash_audit():
+    """Count accounts still on legacy hashes. No password is ever recoverable."""
+    try:
+        c = db()
+        rows = c.execute("SELECT password_hash FROM users").fetchall()
+        c.close()
+    except sqlite3.DatabaseError:
+        return {"accounts": 0, "pbkdf2": 0, "legacy_sha256": 0, "pending_upgrade": []}
+    legacy = [r["password_hash"] for r in rows
+              if not str(r["password_hash"] or "").startswith(PBKDF2_PREFIX)]
+    return {
+        "accounts": len(rows),
+        "pbkdf2": len(rows) - len(legacy),
+        "legacy_sha256": len(legacy),
+        "pending_upgrade": len(legacy),
+        "note": "Legacy hashes cannot be converted without each password; they upgrade on next successful login.",
+    }
+
+
+def _migrate_schema(c):
+    """Reconcile an existing database with the current schema, additively."""
+    added_total = []
+
+    added_total += _ensure_columns(c, "settings", [("value", "TEXT")])
+    added_total += _ensure_columns(c, "signals", [
+        ("created", "TEXT"), ("symbol", "TEXT"), ("session", "TEXT"),
+        ("direction", "TEXT"), ("entry", "REAL"), ("stop", "REAL"),
+        ("tp1", "REAL"), ("tp2", "REAL"), ("score", "REAL"), ("reason", "TEXT"),
+    ])
+    added_total += _ensure_columns(c, "users", [
+        ("display_name", "TEXT NOT NULL DEFAULT ''"),
+        ("access_level", "TEXT NOT NULL DEFAULT 'free'"),
+        ("access_status", "TEXT NOT NULL DEFAULT 'active'"),
+        ("created_at", "TEXT NOT NULL DEFAULT ''"),
+    ])
+
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+        "CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created)",
+        "CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)",
+    ):
+        try:
+            c.execute(statement)
+        except sqlite3.DatabaseError:
+            app.logger.warning("Index creation skipped: %s", statement)
+
+    c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('schema_version',?)",
+              (SCHEMA_VERSION,))
+    c.execute("UPDATE settings SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,))
+
+    audit = password_hash_audit()
+    state = ("pbkdf2" if audit["legacy_sha256"] == 0
+             else "legacy-pending" if audit["pbkdf2"] == 0
+             else "mixed")
+    c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('admin_hash_state',?)", (state,))
+    c.execute("UPDATE settings SET value=? WHERE key='admin_hash_state'", (state,))
+
+    if added_total:
+        app.logger.warning("Schema migration added columns: %s", ", ".join(added_total))
+    if audit["pending_upgrade"]:
+        app.logger.warning(
+            "%s account(s) still use legacy password hashes and will upgrade on next login.",
+            audit["pending_upgrade"],
+        )
+
 
 init_db()
 
@@ -407,7 +731,7 @@ def biquote_candles(symbol, interval, size=100):
         payload = response.json()
         bars = payload.get("bars", [])
         if not isinstance(bars, list) or not bars:
-            return None, "BiQuote returned no candles for " + provider_symbol
+            return None, "BiQuote returned no candles for " + provider_symbol, None
         # API is newest-first. Drop the forming candle and retain the newest closed bars.
         closed = [bar for bar in bars if not bar.get("isOpen", False)]
         selected = list(reversed(closed[:int(size)]))
@@ -419,7 +743,7 @@ def biquote_candles(symbol, interval, size=100):
             "close": float(bar["close"])
         } for bar in selected]
         if not _valid_ohlc(values):
-            return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol
+            return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol, None
 
         # Fail closed on stale data while the relevant market is expected open.
         # Crypto and synthetic indices are treated as 24/7; FX/metals/index
@@ -432,7 +756,7 @@ def biquote_candles(symbol, interval, size=100):
             age_seconds = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
             age_seconds = max(0, age_seconds)
         except (TypeError, ValueError):
-            return None, "Latest BiQuote candle has an invalid timestamp for " + provider_symbol
+            return None, "Latest BiQuote candle has an invalid timestamp for " + provider_symbol, None
 
         group = next((item.get("group") for item in ASSETS.values()
                       if item.get("td") == symbol), "FOREX")
@@ -448,9 +772,9 @@ def biquote_candles(symbol, interval, size=100):
                 ": latest completed candle is " + str(round(age_seconds / 60)) +
                 " minutes old; limit is " + str(round(freshness_limit / 60)) + " minutes."
             )
-        return values, None
+        return values, None, "BiQuote public OHLC feed"
     except Exception as exc:
-        return None, "BiQuote market feed failed: " + str(exc)
+        return None, "BiQuote market feed failed: " + str(exc), None
 
 
 def deriv_candles(symbol, interval, size=100):
@@ -461,10 +785,10 @@ def deriv_candles(symbol, interval, size=100):
 
     app_id = get_setting("deriv_app_id").strip()
     if not app_id or not app_id.isdigit():
-        return None, "Deriv App ID is not configured. Add your own App ID in TW Control Center."
+        return None, "Deriv App ID is not configured. Add your own App ID in TW Control Center.", None
     granularity = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval)
     if not granularity:
-        return None, "Unsupported Deriv candle interval: " + str(interval)
+        return None, "Unsupported Deriv candle interval: " + str(interval), None
 
     aliases = {
         "R_10": ["R_10", "Volatility 10 Index"],
@@ -502,13 +826,13 @@ def deriv_candles(symbol, interval, size=100):
         for _ in range(8):
             message = json.loads(ws.recv())
             if message.get("error"):
-                return None, "Deriv symbol lookup failed: " + str(message["error"].get("message", "API error"))
+                return None, "Deriv symbol lookup failed: " + str(message["error"].get("message", "API error")), None
             if message.get("req_id") == 731 or message.get("msg_type") == "active_symbols":
                 active = message.get("active_symbols")
                 if isinstance(active, list):
                     break
         if not isinstance(active, list) or not active:
-            return None, "Deriv returned no active-symbol catalogue."
+            return None, "Deriv returned no active-symbol catalogue.", None
 
         deriv_symbol = None
         for item in active:
@@ -518,7 +842,7 @@ def deriv_candles(symbol, interval, size=100):
                 deriv_symbol = code
                 break
         if not deriv_symbol:
-            return None, "Deriv does not currently list an active symbol matching " + str(symbol) + "."
+            return None, "Deriv does not currently list an active symbol matching " + str(symbol) + ".", None
 
         ws.send(json.dumps({
             "ticks_history": deriv_symbol,
@@ -533,16 +857,16 @@ def deriv_candles(symbol, interval, size=100):
         for _ in range(8):
             message = json.loads(ws.recv())
             if message.get("error"):
-                return None, "Deriv rejected " + deriv_symbol + ": " + str(message["error"].get("message", "API error"))
+                return None, "Deriv rejected " + deriv_symbol + ": " + str(message["error"].get("message", "API error")), None
             if message.get("req_id") == 732 or message.get("msg_type") == "candles":
                 response_data = message
                 break
         if not isinstance(response_data, dict):
-            return None, "Deriv did not return candle history for " + deriv_symbol
+            return None, "Deriv did not return candle history for " + deriv_symbol, None
 
         raw_candles = response_data.get("candles", [])
         if not isinstance(raw_candles, list) or not raw_candles:
-            return None, "Deriv returned no candle history for " + deriv_symbol
+            return None, "Deriv returned no candle history for " + deriv_symbol, None
 
         values = []
         for candle in raw_candles:
@@ -555,11 +879,11 @@ def deriv_candles(symbol, interval, size=100):
                     "close": float(candle["close"])
                 })
             except (KeyError, TypeError, ValueError, OverflowError):
-                return None, "Deriv returned a malformed candle for " + deriv_symbol
+                return None, "Deriv returned a malformed candle for " + deriv_symbol, None
 
         values.sort(key=lambda item: item["time"])
         if not _valid_ohlc(values, minimum=min(30, int(size))):
-            return None, "Deriv returned malformed or insufficient completed candles for " + deriv_symbol
+            return None, "Deriv returned malformed or insufficient completed candles for " + deriv_symbol, None
 
         age_seconds = max(0, (datetime.now(timezone.utc) -
                               datetime.fromisoformat(values[-1]["time"])).total_seconds())
@@ -568,70 +892,393 @@ def deriv_candles(symbol, interval, size=100):
             return None, (
                 "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
                 str(round(age_seconds / 60)) + " minutes old."
-            )
-        return values, None
+            ), None
+        return values, None, "Deriv public WebSocket"
     except Exception as exc:
-        return None, "Deriv market feed failed for " + str(symbol) + ": " + str(exc)
+        return None, "Deriv market feed failed for " + str(symbol) + ": " + str(exc), None
     finally:
         if ws is not None:
             try:
                 ws.close()
             except Exception:
                 pass
+def market_source_label(group=None):
+    """Accurate human-readable label for the feed that actually serves a group."""
+    if group == "SYNTHETICS":
+        return "Deriv public WebSocket"
+    if group == "INDICES":
+        return "Yahoo Finance chart API"
+    return "BiQuote public OHLC feed"
+
+
+def group_for_provider_symbol(symbol):
+    """Map a provider symbol (the ASSETS 'td' value) back to its asset group."""
+    return next((item.get("group") for item in ASSETS.values()
+                 if item.get("td") == symbol), None)
+
+
+# Cash-session windows in UTC hours, per index. Holidays are not modelled.
+INDEX_SESSIONS = {
+    "IXIC": (13.5, 20.0),   # Nasdaq, US cash session
+    "DJI": (13.5, 20.0),    # Dow Jones, US cash session
+    "SPX": (13.5, 20.0),    # S&P 500, US cash session
+    "VIX": (13.5, 20.0),    # CBOE volatility, US cash session
+    "DAX": (7.0, 15.5),     # Xetra
+    "FTSE": (8.0, 16.5),    # London Stock Exchange
+}
+
+
+def index_market_open(provider_symbol, now=None):
+    """Is this index's cash session open right now?"""
+    now = now or datetime.now(timezone.utc)
+    if now.weekday() >= 5:
+        return False
+    window = INDEX_SESSIONS.get(provider_symbol)
+    if not window:
+        return False
+    hour = now.hour + now.minute / 60.0
+    return window[0] <= hour <= window[1]
+
+
+def market_expected_open(group, symbol=None):
+    """Is this market expected to be trading right now?
+
+    Used so a closed market reports as closed rather than as a broken feed.
+    """
+    if group in ("CRYPTO", "SYNTHETICS"):
+        return True
+    if group == "INDICES":
+        return index_market_open(symbol)
+    now = datetime.now(timezone.utc)
+    if now.weekday() >= 5:
+        return False
+    return not fx_market_closed(now)
+
+
+def _freshness_limit(interval, granularity):
+    return max(1200, granularity * 2 + 300)
+
+
+def _candle_age_seconds(values):
+    """Age in seconds of the newest candle, or None when unparseable."""
+    try:
+        stamp = datetime.fromisoformat(str(values[-1].get("time")).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds())
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+YAHOO_SYMBOLS = {
+    "XAU/USD": "GC=F",
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "USDJPY=X",
+    "GBP/JPY": "GBPJPY=X",
+    "EUR/JPY": "EURJPY=X",
+    "EUR/AUD": "EURAUD=X",
+    "GBP/AUD": "GBPAUD=X",
+    "USD/CHF": "USDCHF=X",
+    "AUD/USD": "AUDUSD=X",
+    "USD/CAD": "USDCAD=X",
+    "IXIC": "^IXIC",
+    "DJI": "^DJI",
+    "SPX": "^GSPC",
+    "DAX": "^GDAXI",
+    "FTSE": "^FTSE",
+    "VIX": "^VIX",
+    "BTC/USD": "BTC-USD",
+    "ETH/USD": "ETH-USD",
+    "SOL/USD": "SOL-USD",
+    "XRP/USD": "XRP-USD",
+    "ADA/USD": "ADA-USD",
+    "DOGE/USD": "DOGE-USD",
+}
+
+YAHOO_GRANULARITY = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}
+
+
+def yahoo_candles(symbol, interval, size=100):
+    """Completed OHLC candles from Yahoo Finance's public chart API.
+
+    Yahoo has no native 4h interval, so 4h is built by aggregating real 60m
+    candles into four-hour buckets. Aggregation never invents a bar: open and
+    close come from real bars and high/low are real extremes.
+    """
+    import urllib.parse
+
+    granularity = YAHOO_GRANULARITY.get(interval)
+    if not granularity:
+        return None, "Unsupported Yahoo interval: " + str(interval), None
+
+    ticker = YAHOO_SYMBOLS.get(symbol)
+    if not ticker:
+        return None, "No Yahoo Finance symbol mapped for " + str(symbol), None
+
+    group = group_for_provider_symbol(symbol)
+    is_four_hour = interval == "4h"
+    yahoo_interval = "60m" if is_four_hour else {"5min": "5m", "15min": "15m", "1h": "60m"}[interval]
+    yahoo_range = "6mo" if is_four_hour else "1mo"
+
+    url = ("https://query1.finance.yahoo.com/v8/finance/chart/" +
+           urllib.parse.quote(ticker) + "?interval=" + yahoo_interval +
+           "&range=" + yahoo_range)
+    try:
+        response = requests.get(url, timeout=12, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; TW-Trades-Intelligence/1.0)",
+            "Accept": "application/json",
+        })
+        response.raise_for_status()
+        payload = response.json()
+    except requests.Timeout:
+        return None, "Yahoo Finance timed out for " + ticker, None
+    except (requests.RequestException, ValueError) as exc:
+        return None, "Yahoo Finance feed failed for " + ticker + ": " + str(exc), None
+    except Exception as exc:
+        return None, "Yahoo Finance feed failed for " + ticker + ": " + str(exc), None
+
+    try:
+        result = (payload.get("chart", {}).get("result") or [None])[0]
+        if not result:
+            error = payload.get("chart", {}).get("error") or {}
+            return None, "Yahoo Finance returned no series for " + ticker + ": " + str(error.get("description", "empty result")), None
+        stamps = result.get("timestamp") or []
+        quote = (result.get("indicators", {}).get("quote") or [{}])[0]
+        opens, highs, lows, closes = (quote.get("open") or [], quote.get("high") or [],
+                                      quote.get("low") or [], quote.get("close") or [])
+    except (AttributeError, IndexError, TypeError):
+        return None, "Yahoo Finance returned an unreadable payload for " + ticker, None
+
+    raw = []
+    for index, stamp in enumerate(stamps):
+        try:
+            o, h, l, c = opens[index], highs[index], lows[index], closes[index]
+        except IndexError:
+            continue
+        if None in (o, h, l, c):
+            continue
+        raw.append({
+            "epoch": int(stamp),
+            "time": datetime.fromtimestamp(int(stamp), timezone.utc).isoformat(),
+            "open": float(o), "high": float(h), "low": float(l), "close": float(c),
+        })
+
+    if not raw:
+        return None, "Yahoo Finance returned no usable candles for " + ticker, None
+
+    if is_four_hour:
+        buckets = {}
+        for bar in raw:
+            moment = datetime.fromtimestamp(bar["epoch"], timezone.utc)
+            key = moment.replace(minute=0, second=0, microsecond=0, hour=(moment.hour // 4) * 4)
+            label = key.isoformat()
+            current = buckets.get(label)
+            if current is None:
+                buckets[label] = {"time": label, "open": bar["open"], "high": bar["high"],
+                                  "low": bar["low"], "close": bar["close"], "_last": bar["epoch"]}
+            else:
+                current["high"] = max(current["high"], bar["high"])
+                current["low"] = min(current["low"], bar["low"])
+                current["close"] = bar["close"]
+                current["_last"] = bar["epoch"]
+        ordered = [buckets[k] for k in sorted(buckets)]
+        now_epoch = datetime.now(timezone.utc).timestamp()
+        # A bucket is complete once the wall clock has passed its own end time.
+        # Comparing against the last hourly bar instead would discard the newest
+        # completed bucket for most of the following four hours.
+        completed = []
+        for bucket in ordered:
+            start_epoch = datetime.fromisoformat(bucket["time"]).timestamp()
+            if now_epoch >= start_epoch + granularity:
+                completed.append(bucket)
+        values = [{k: v for k, v in b.items() if k != "_last"} for b in completed]
+    else:
+        values = [{"time": b["time"], "open": b["open"], "high": b["high"],
+                   "low": b["low"], "close": b["close"]} for b in raw]
+        # Drop the still-forming candle using the newest bar's own timestamp.
+        now_epoch = datetime.now(timezone.utc).timestamp()
+        values = [v for v in values
+                  if now_epoch - datetime.fromisoformat(v["time"]).timestamp() >= granularity]
+
+    values = values[-int(size):]
+    if not _valid_ohlc(values, minimum=min(30, int(size))):
+        return None, ("Yahoo Finance returned insufficient completed candles for " +
+                      ticker + " (" + str(len(values)) + ")"), None
+
+    age_seconds = _candle_age_seconds(values)
+    if age_seconds is None:
+        return None, "Yahoo Finance returned an invalid timestamp for " + ticker, None
+
+    if market_expected_open(group, symbol) and age_seconds > _freshness_limit(interval, granularity):
+        return None, ("Stale market data rejected for " + ticker + ": latest completed candle is " +
+                      str(round(age_seconds / 60)) + " minutes old; limit is " +
+                      str(round(_freshness_limit(interval, granularity) / 60)) + " minutes."), None
+
+    return values, None, "Yahoo Finance chart API"
+
+
 def td(symbol, interval, size=100):
-    """Route Deriv-listed crypto and synthetic instruments to Deriv; keep other feeds unchanged."""
-    deriv_groups = {"CRYPTO", "SYNTHETICS"}
-    group = next((item.get("group") for item in ASSETS.values()
-                  if item.get("td") == symbol), None)
-    if group in deriv_groups:
+    """Route each instrument to a provider verified to serve it.
+
+    Returns (candles, error, provider).
+
+    Verified coverage:
+      * Indices: BiQuote returns HTTP 200 with an empty bar list for every
+        index, so indices are served by Yahoo Finance.
+      * Crypto/FX/metals: BiQuote first; Yahoo Finance when BiQuote is empty or
+        stale (ADA/USD and DOGE/USD are years out of date on BiQuote).
+      * Synthetics: Deriv only, and only with a configured App ID.
+    """
+    group = group_for_provider_symbol(symbol)
+
+    if group == "SYNTHETICS":
         return deriv_candles(symbol, interval, size)
-    return biquote_candles(symbol, interval, size)
+
+    primary = biquote_candles(symbol, interval, size)
+    if primary[0]:
+        return primary
+
+    if group == "INDICES":
+        return yahoo_candles(symbol, interval, size)
+
+    fallback = yahoo_candles(symbol, interval, size)
+    if fallback[0]:
+        return fallback
+    return None, primary[1] + " | Yahoo Finance fallback: " + str(fallback[1]), None
 
 # ============================================================
-# MARKET NEWS — GDELT DOC API (no API key required)
+# MARKET NEWS — GDELT DOC API primary, verified publisher RSS fallback
+#
+# GDELT publishes honest headlines but rate-limits hard (one request per
+# five seconds) and rejects bursts. The engine calls news once per instrument,
+# so requests are now cached and globally throttled, and a verified publisher
+# RSS feed is used when GDELT is unavailable. Headlines are never converted
+# into sentiment scores, because no source here supplies them.
 # ============================================================
 
-def news(symbol):
-    """Fetch current headlines from GDELT. News headlines are not treated as sentiment."""
-    if symbol not in ASSETS:
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "Unsupported instrument."}
+NEWS_CACHE_TTL = 600          # seconds a headline set stays fresh
+GDELT_MIN_INTERVAL = 5.5      # GDELT publishes a 1-per-5-second budget
+GDELT_BACKOFF = 180           # pause after a 429 before trying GDELT again
+NEWS_UA = "TW-Trades-Intelligence/1.0"
 
-    # Human-readable terms produce more relevant results than broker-specific symbols.
-    queries = {
-        "XAU/USD": '(gold OR bullion OR "precious metals")',
-        "EUR/USD": '(euro OR EURUSD OR "European Central Bank")',
-        "GBP/USD": '(sterling OR GBPUSD OR "Bank of England")',
-        "USD/JPY": '(yen OR USDJPY OR "Bank of Japan")',
-        "GBP/JPY": '(sterling OR yen OR GBPJPY)',
-        "EUR/JPY": '(euro OR yen OR EURJPY)',
-        "EUR/AUD": '(euro OR Australian dollar OR EURAUD)',
-        "GBP/AUD": '(sterling OR Australian dollar OR GBPAUD)',
-        "USD/CHF": '(Swiss franc OR USDCHF OR SNB)',
-        "AUD/USD": '(Australian dollar OR AUDUSD OR RBA)',
-        "USD/CAD": '(Canadian dollar OR USDCAD OR Bank of Canada)',
-        "NASDAQ": '(Nasdaq OR technology stocks OR Nasdaq-100)',
-        "US30": '("Dow Jones" OR Dow30 OR DJIA)',
-        "S&P 500": '("S&P 500" OR SP500 OR "US stocks")',
-        "DAX40": '(DAX OR "German stocks")',
-        "FTSE100": '(FTSE OR "UK stocks")',
-        "VIX": '(VIX OR "market volatility")',
-        "BTC/USD": '(Bitcoin OR BTC OR cryptocurrency)',
-        "ETH/USD": '(Ethereum OR ETH OR cryptocurrency)',
-        "SOL/USD": '(Solana OR SOL cryptocurrency)',
-        "XRP/USD": '(XRP OR Ripple cryptocurrency)',
-        "ADA/USD": '(Cardano OR ADA cryptocurrency)',
-        "DOGE/USD": '(Dogecoin OR DOGE cryptocurrency)',
-        "Volatility 10 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 25 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 50 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 75 Index": '("synthetic indices" OR Deriv)',
-        "Volatility 100 Index": '("synthetic indices" OR Deriv)',
-        "Boom 500 Index": '("synthetic indices" OR Deriv)',
-        "Crash 500 Index": '("synthetic indices" OR Deriv)',
-        "Step Index": '("synthetic indices" OR Deriv)'
+_NEWS_CACHE = {}
+_NEWS_CACHE_LOCK = threading.Lock()
+_GDELT_LOCK = threading.Lock()
+_GDELT_STATE = {"last_call": 0.0, "blocked_until": 0.0, "rate_limited": False}
+
+NEWS_QUERIES = {
+    "XAU/USD": '(gold OR bullion OR "precious metals")',
+    "EUR/USD": '(euro OR EURUSD OR "European Central Bank")',
+    "GBP/USD": '(sterling OR GBPUSD OR "Bank of England")',
+    "USD/JPY": '(yen OR USDJPY OR "Bank of Japan")',
+    "GBP/JPY": '(sterling OR yen OR GBPJPY)',
+    "EUR/JPY": '(euro OR yen OR EURJPY)',
+    "EUR/AUD": '(euro OR Australian dollar OR EURAUD)',
+    "GBP/AUD": '(sterling OR Australian dollar OR GBPAUD)',
+    "USD/CHF": '(Swiss franc OR USDCHF OR SNB)',
+    "AUD/USD": '(Australian dollar OR AUDUSD OR RBA)',
+    "USD/CAD": '(Canadian dollar OR USDCAD OR Bank of Canada)',
+    "NASDAQ": '(Nasdaq OR technology stocks OR Nasdaq-100)',
+    "US30": '("Dow Jones" OR Dow30 OR DJIA)',
+    "S&P 500": '("S&P 500" OR SP500 OR "US stocks")',
+    "DAX40": '(DAX OR "German stocks")',
+    "FTSE100": '(FTSE OR "UK stocks")',
+    "VIX": '(VIX OR "market volatility")',
+    "BTC/USD": '(Bitcoin OR BTC OR cryptocurrency)',
+    "ETH/USD": '(Ethereum OR ETH OR cryptocurrency)',
+    "SOL/USD": '(Solana OR SOL cryptocurrency)',
+    "XRP/USD": '(XRP OR Ripple cryptocurrency)',
+    "ADA/USD": '(Cardano OR ADA cryptocurrency)',
+    "DOGE/USD": '(Dogecoin OR DOGE cryptocurrency)',
+}
+
+# Verified Yahoo Finance publisher feeds. Each entry is tried in order and the
+# first that returns real items wins; an empty result falls through to the
+# general market wires rather than inventing coverage.
+NEWS_RSS_SYMBOLS = {
+    "XAU/USD": ["GC=F", "XAUUSD=X"],
+    "EUR/USD": ["EURUSD=X"],
+    "GBP/USD": ["GBPUSD=X"],
+    "USD/JPY": ["USDJPY=X", "JPY=X"],
+    "GBP/JPY": ["GBPJPY=X", "JPY=X"],
+    "EUR/JPY": ["EURJPY=X", "JPY=X"],
+    "EUR/AUD": ["EURAUD=X", "AUDUSD=X"],
+    "GBP/AUD": ["GBPAUD=X", "AUDUSD=X"],
+    "USD/CHF": ["USDCHF=X", "CHF=X"],
+    "AUD/USD": ["AUDUSD=X"],
+    "USD/CAD": ["USDCAD=X", "CAD=X"],
+    "NASDAQ": ["^IXIC"],
+    "US30": ["^DJI"],
+    "S&P 500": ["^GSPC"],
+    "DAX40": ["^GDAXI"],
+    "FTSE100": ["^FTSE"],
+    "VIX": ["^VIX"],
+    "BTC/USD": ["BTC-USD"],
+    "ETH/USD": ["ETH-USD"],
+    "SOL/USD": ["SOL-USD"],
+    "XRP/USD": ["XRP-USD"],
+    "ADA/USD": ["ADA-USD"],
+    "DOGE/USD": ["DOGE-USD"],
+}
+
+GENERAL_MARKET_FEEDS = [
+    ("https://feeds.a.dj.com/rss/RSSMarketsMain.xml", "WSJ Markets"),
+    ("https://www.cnbc.com/id/100003114/device/rss/rss.html", "CNBC Top News"),
+]
+
+_feed_cache = {}
+
+
+def _news_payload(articles, source, scope, degraded, message, rate_limited=False):
+    seen = set()
+    unique = []
+    for article in articles:
+        key = article.get("title", "").lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(article)
+        if len(unique) >= 10:
+            break
+    return {
+        "available": bool(unique),
+        "sentiment": 0,
+        "sentiment_available": False,
+        "articles": unique,
+        "source": source,
+        "scope": scope,
+        "degraded": degraded,
+        "rate_limited": rate_limited,
+        "message": message,
     }
-    query = queries.get(symbol, ASSETS[symbol].get("news", symbol))
+
+
+def _gdelt_slot():
+    """Reserve a GDELT call only when the published rate budget allows it."""
+    now = time.monotonic()
+    with _GDELT_LOCK:
+        if now < _GDELT_STATE["blocked_until"]:
+            return False
+        if now - _GDELT_STATE["last_call"] < GDELT_MIN_INTERVAL:
+            return False
+        _GDELT_STATE["last_call"] = now
+        return True
+
+
+def _gdelt_mark(result):
+    """Record GDELT health so a 429 stops the whole scan from hammering it."""
+    with _GDELT_LOCK:
+        if result == "rate_limited":
+            _GDELT_STATE["rate_limited"] = True
+            _GDELT_STATE["blocked_until"] = time.monotonic() + GDELT_BACKOFF
+        elif result == "ok":
+            _GDELT_STATE["rate_limited"] = False
+            _GDELT_STATE["blocked_until"] = 0.0
+
+
+def _gdelt_articles(query):
+    """Return (articles, error_kind). Never fabricates headlines."""
     try:
         response = requests.get(
             "https://api.gdeltproject.org/api/v2/doc/doc",
@@ -640,18 +1287,20 @@ def news(symbol):
                 "mode": "ArtList",
                 "format": "json",
                 "maxrecords": 10,
-                "sort": "HybridRel"
+                "sort": "HybridRel",
             },
-            timeout=12,
-            headers={"User-Agent": "TW-Trades-Intelligence/1.0"}
+            timeout=10,
+            headers={"User-Agent": NEWS_UA},
         )
+        if response.status_code == 429:
+            _gdelt_mark("rate_limited")
+            return [], "rate_limited"
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
-            raise ValueError("GDELT returned an unexpected response.")
-        rows = payload.get("articles", [])
+            return [], "bad_payload"
         articles = []
-        for row in rows[:10]:
+        for row in payload.get("articles", [])[:10]:
             if not isinstance(row, dict):
                 continue
             title = str(row.get("title") or "").strip()
@@ -664,26 +1313,169 @@ def news(symbol):
                 "description": "",
                 "snippet": "",
                 "published_at": row.get("seendate", ""),
-                "source": row.get("domain", "GDELT")
+                "source": row.get("domain", "GDELT"),
             })
-        return {
-            "available": True,
-            "sentiment": 0,
-            "sentiment_available": False,
-            "articles": articles,
-            "source": "GDELT",
-            "message": "Headlines from GDELT. Sentiment scoring is not supplied by this source."
-        }
+        if articles:
+            _gdelt_mark("ok")
+            return articles, None
+        return [], "empty"
     except requests.Timeout:
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news request timed out. Retry shortly."}
+        return [], "timeout"
     except (requests.RequestException, ValueError):
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news is temporarily unavailable. Technical analysis remains separate."}
+        return [], "unavailable"
     except Exception:
         app.logger.exception("GDELT news processing failed.")
+        return [], "unavailable"
+
+
+def _parse_rss(content, fallback_source):
+    """Namespace-tolerant RSS item reader."""
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return []
+    articles = []
+    for node in root.iter():
+        tag = node.tag.split("}")[-1].lower()
+        if tag != "item":
+            continue
+        fields = {}
+        for child in node:
+            name = child.tag.split("}")[-1].lower()
+            if name in ("title", "link", "pubdate", "description"):
+                fields[name] = (child.text or "").strip()
+        title = fields.get("title", "")
+        link = fields.get("link", "")
+        if not title or not link.startswith(("https://", "http://")):
+            continue
+        articles.append({
+            "title": title,
+            "url": link,
+            "description": "",
+            "snippet": "",
+            "published_at": fields.get("pubdate", ""),
+            "source": fallback_source,
+        })
+    return articles
+
+
+def _fetch_feed(url, label):
+    now = time.monotonic()
+    cached = _feed_cache.get(url)
+    if cached and now - cached[0] < NEWS_CACHE_TTL:
+        return cached[1]
+    try:
+        response = requests.get(url, timeout=10, headers={"User-Agent": NEWS_UA})
+        response.raise_for_status()
+        items = _parse_rss(response.content, label)
+    except Exception:
+        items = []
+    _feed_cache[url] = (now, items)
+    return items
+
+
+def _rss_articles_for(symbol):
+    """Instrument-level publisher headlines, else general market wires."""
+    for ticker in NEWS_RSS_SYMBOLS.get(symbol, []):
+        url = ("https://feeds.finance.yahoo.com/rss/2.0/headline?s=" +
+               requests.utils.quote(ticker, safe="") + "&region=US&lang=en-US")
+        items = _fetch_feed(url, "Yahoo Finance")
+        if items:
+            return items, "Yahoo Finance", "instrument"
+    for url, label in GENERAL_MARKET_FEEDS:
+        items = _fetch_feed(url, label)
+        if items:
+            return items, label, "general"
+    return [], "UNAVAILABLE", "none"
+
+
+def news(symbol):
+    """Headlines for one instrument. Cached, throttled, never fabricated."""
+    if symbol not in ASSETS:
         return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "GDELT", "message": "GDELT news could not be processed."}
+                "articles": [], "source": "NONE", "scope": "none",
+                "degraded": True, "rate_limited": False,
+                "message": "Unsupported instrument."}
+
+    now = time.monotonic()
+    with _NEWS_CACHE_LOCK:
+        cached = _NEWS_CACHE.get(symbol)
+        if cached and now - cached[0] < NEWS_CACHE_TTL:
+            return dict(cached[1])
+
+    gdelt_error = None
+    result = None
+
+    if symbol in NEWS_QUERIES:
+        if _gdelt_slot():
+            articles, gdelt_error = _gdelt_articles(NEWS_QUERIES[symbol])
+            if articles:
+                result = _news_payload(
+                    articles,
+                    source="GDELT",
+                    scope="instrument",
+                    degraded=False,
+                    message="Headlines from GDELT. GDELT does not supply sentiment scores, so none are shown.",
+                )
+        else:
+            gdelt_error = "rate_limited"
+
+    if result is None:
+        articles, label, scope = _rss_articles_for(symbol)
+        if articles:
+            if gdelt_error == "rate_limited":
+                reason = "GDELT rate limit (one request per five seconds) reached"
+            elif gdelt_error:
+                reason = "GDELT did not respond (" + gdelt_error + ")"
+            else:
+                reason = "No GDELT query is defined for this instrument"
+            if scope == "general":
+                reason += "; showing general market wire headlines, not instrument-specific coverage"
+            message = reason + ". Headlines are not treated as sentiment."
+            result = _news_payload(
+                articles,
+                source=label,
+                scope=scope,
+                degraded=True,
+                message=message,
+                rate_limited=gdelt_error == "rate_limited",
+            )
+        else:
+            result = {
+                "available": False,
+                "sentiment": 0,
+                "sentiment_available": False,
+                "articles": [],
+                "source": "UNAVAILABLE",
+                "scope": "none",
+                "degraded": True,
+                "rate_limited": gdelt_error == "rate_limited",
+                "message": "No verified headline source responded. Technical analysis is unaffected and no sentiment is invented.",
+            }
+
+    with _NEWS_CACHE_LOCK:
+        _NEWS_CACHE[symbol] = (now, dict(result))
+    return result
+
+
+def news_diagnostics():
+    """Read-only health summary for the news layer."""
+    with _GDELT_LOCK:
+        blocked = max(0.0, _GDELT_STATE["blocked_until"] - time.monotonic())
+        rate_limited = _GDELT_STATE["rate_limited"]
+    with _NEWS_CACHE_LOCK:
+        cached = len(_NEWS_CACHE)
+    return {
+        "primary_source": "GDELT DOC 2.0",
+        "fallback_source": "Yahoo Finance / WSJ Markets / CNBC RSS (verified publishers)",
+        "gdelt_rate_limited": rate_limited,
+        "gdelt_backoff_seconds_remaining": round(blocked, 1),
+        "min_interval_seconds": GDELT_MIN_INTERVAL,
+        "cache_ttl_seconds": NEWS_CACHE_TTL,
+        "cached_instruments": cached,
+        "sentiment_scoring": "not available from these sources; sentiment is excluded from scoring",
+    }
+
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -875,6 +1667,31 @@ def analyze(symbol):
         return {"status":"ERROR","message":"Unknown symbol"}
 
     asset_group = ASSETS[symbol].get("group", "FOREX")
+
+    # Synthetic indices exist only on Deriv. Without a configured App ID there
+    # is no data source at all, so report a configuration gap rather than a
+    # misleading market or data error.
+    if asset_group == "SYNTHETICS" and not get_setting("deriv_app_id"):
+        return {
+            "symbol": symbol,
+            "status": "UNSUPPORTED",
+            "group": asset_group,
+            "message": "Synthetic indices need a Deriv App ID. Add one in TW Control Center; until then this instrument has no live data source and is excluded from signals."
+        }
+
+    if asset_group == "INDICES":
+        provider_symbol = ASSETS[symbol].get("td")
+        if not index_market_open(provider_symbol):
+            session_name = "US cash session" if INDEX_SESSIONS.get(provider_symbol, (0, 0))[0] >= 13 else "European cash session"
+            return {
+                "symbol": symbol,
+                "status": "MARKET CLOSED",
+                "group": asset_group,
+                "market_status": "CLOSED",
+                "message": ("This index's " + session_name + " is closed. The newest candles belong to an "
+                            "earlier session, so no signal is generated from them."),
+            }
+
     sess = current_session(asset_group)
 
     if sess=="OFF-SESSION":
@@ -930,6 +1747,7 @@ def analyze(symbol):
     intervals = ["4h", "1h", "15min", "5min"]
     frames = {}
     errors = []
+    providers = {}
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         jobs = {
@@ -939,13 +1757,14 @@ def analyze(symbol):
         for job in as_completed(jobs):
             interval = jobs[job]
             try:
-                data, error = job.result()
+                data, error, provider = job.result()
             except Exception as exc:
-                data, error = None, str(exc)
+                data, error, provider = None, str(exc), None
             if error:
                 errors.append(interval + ": " + error)
             else:
                 frames[interval] = data
+                providers[interval] = provider
 
     if errors:
         return {
@@ -953,6 +1772,9 @@ def analyze(symbol):
             "status": "DATA ERROR",
             "message": "Live candle data unavailable (" + "; ".join(errors) + ")"
         }
+
+    data_source = providers.get("1h") or market_source_label(asset_group)
+    market_status = "OPEN" if market_expected_open(asset_group, ASSETS[symbol].get("td")) else "CLOSED"
 
     t4=trend(frames["4h"])
     t1=trend(frames["1h"])
@@ -1024,42 +1846,121 @@ def analyze(symbol):
         technical_sell+=5
         sell.append("Negative fundamental/news flow")
 
-    if technical_buy>=technical_sell:
-        direction="BUY"
-        score=technical_buy
-        reasons=buy
-    else:
-        direction="SELL"
-        score=technical_sell
-        reasons=sell
+    # ------------------------------------------------------------------
+    # TW Blueprint ICC gate, evaluated independently on BOTH sides.
+    #
+    # Scoring first and gating second meant only one side was ever judged. With
+    # a bearish 4H, a score-leaning BUY was rejected for "4H and 1H must agree"
+    # while the SELL side that the 4H supports was never examined. Both sides
+    # are now scored and gated with the same functions, and the side that
+    # actually satisfies the Blueprint is the side that gets promoted.
+    # ------------------------------------------------------------------
+    def evaluate_side(side):
+        wants_bull = side == "BUY"
+        indication_s, correction_s, continuation_s = icc_sequence(m5, side)
 
-    # TW Blueprint ICC is mandatory: body-based indication, correction, and
-    # continuation must all exist in the same direction. Require 4H/1H
-    # agreement and reject an opposing 15M trend. No partial setup is promoted.
-    indication, correction_ok, continuation_ok = icc_sequence(m5, direction)
-    higher_tf_agree = (t4 == ("BULLISH" if direction == "BUY" else "BEARISH")
-                       and t1 == ("BULLISH" if direction == "BUY" else "BEARISH"))
-    mid_tf_not_opposed = t15 != ("BEARISH" if direction == "BUY" else "BULLISH")
+        h4_aligned = t4 == ("BULLISH" if wants_bull else "BEARISH")
+        h1_aligned = t1 == ("BULLISH" if wants_bull else "BEARISH")
+        m15_aligned = t15 == ("BULLISH" if wants_bull else "BEARISH")
+        htf_agree = h4_aligned and h1_aligned
+        mid_not_opposed = t15 != ("BEARISH" if wants_bull else "BULLISH")
+
+        # Same table as the published methodology, now driven by the exact
+        # structure results the gate uses.
+        points = (
+            (20 if h4_aligned else 0)
+            + (15 if h1_aligned else 0)
+            + (15 if m15_aligned else 0)
+            + (15 if indication_s else 0)
+            + (8 if correction_s else 0)
+            + (12 if continuation_s else 0)
+        )
+
+        gates = {
+            "body-based indication": indication_s,
+            "correction/retest": correction_s,
+            "continuation confirmation": continuation_s,
+            "4H and 1H trend agree": htf_agree,
+            "15M does not oppose": mid_not_opposed,
+            "confluence floor": points >= MIN_CONFLUENCE,
+        }
+        blockers = [name + " missing" if name in (
+            "body-based indication", "correction/retest",
+            "continuation confirmation") else
+            ("4H and 1H trend must agree" if name == "4H and 1H trend agree" else
+             ("15M trend opposes setup" if name == "15M does not oppose" else
+              "confluence score below " + str(MIN_CONFLUENCE)))
+            for name, passed in gates.items() if not passed]
+
+        return {
+            "side": side,
+            "score": points,
+            "indication": indication_s,
+            "correction": correction_s,
+            "continuation": continuation_s,
+            "higher_timeframes_agree": htf_agree,
+            "15m_not_opposed": mid_not_opposed,
+            "15m_aligned": m15_aligned,
+            "gates_passed": sum(1 for passed in gates.values() if passed),
+            "gates_total": len(gates),
+            "qualifies": all(gates.values()),
+            "blockers": blockers,
+        }
+
+    side_results = {"BUY": evaluate_side("BUY"), "SELL": evaluate_side("SELL")}
+    qualifying = [item for item in side_results.values() if item["qualifies"]]
+
+    if qualifying:
+        # If both sides somehow qualify, the higher-scoring structure wins.
+        chosen = max(qualifying, key=lambda item: item["score"])
+    else:
+        # Report the side that came closest, so a rejection is explainable.
+        chosen = max(side_results.values(),
+                     key=lambda item: (item["gates_passed"], item["score"]))
+
+    direction = chosen["side"]
+    score = chosen["score"]
+    reasons = buy if direction == "BUY" else sell
+    indication = chosen["indication"]
+    correction_ok = chosen["correction"]
+    continuation_ok = chosen["continuation"]
+    higher_tf_agree = chosen["higher_timeframes_agree"]
+    mid_tf_not_opposed = chosen["15m_not_opposed"]
+    blockers = chosen["blockers"]
+
     icc_state = (
         "CONTINUATION" if indication and correction_ok and continuation_ok
         else "INDICATION" if indication
         else "CORRECTION" if correction_ok
         else "RANGE / NO ICC"
     )
-    if (score < 72 or not indication or not correction_ok or not continuation_ok
-            or not higher_tf_agree or not mid_tf_not_opposed):
-        blockers = []
-        if not indication: blockers.append("body-based indication missing")
-        if not correction_ok: blockers.append("correction/retest missing")
-        if not continuation_ok: blockers.append("continuation confirmation missing")
-        if not higher_tf_agree: blockers.append("4H and 1H trend must agree")
-        if not mid_tf_not_opposed: blockers.append("15M trend opposes setup")
-        if score < 72: blockers.append("confluence score below 72")
+
+    side_summary = {
+        side: {
+            "score": item["score"],
+            "qualifies": item["qualifies"],
+            "icc_state": (
+                "CONTINUATION" if item["indication"] and item["correction"] and item["continuation"]
+                else "INDICATION" if item["indication"]
+                else "CORRECTION" if item["correction"]
+                else "RANGE / NO ICC"
+            ),
+            "gates_passed": str(item["gates_passed"]) + "/" + str(item["gates_total"]),
+            "blockers": item["blockers"],
+        }
+        for side, item in side_results.items()
+    }
+
+    if not chosen["qualifies"]:
         return {
             "symbol":symbol,
             "status":"NO TRADE",
+            "direction":direction,
+            "direction_evaluated":direction,
             "score":score,
+            "minimum_score":MIN_CONFLUENCE,
             "session":sess,
+            "market_status":market_status,
             "trend4h":t4,
             "trend1h":t1,
             "trend15m":t15,
@@ -1067,6 +1968,8 @@ def analyze(symbol):
             "indication": indication,
             "correction": correction_ok,
             "continuation": continuation_ok,
+            "blockers": blockers,
+            "sides": side_summary,
             "latest_close": round(frames["5min"][-1]["close"], 6),
             "confluence_checks": {
                 "indication": indication,
@@ -1078,9 +1981,9 @@ def analyze(symbol):
             "fundamental":fund,
             "news_source":n.get("source", "GDELT"),
             "news_sentiment":n["sentiment"] if n.get("sentiment_available") else None,
-            "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
+            "data_source":data_source,
             "news_available":n["available"],
-            "message":"No signal: " + "; ".join(blockers) + "."
+            "message":"No signal on " + direction + ": " + "; ".join(blockers) + "."
         }
 
     price=m5[-1]["close"]
@@ -1121,6 +2024,9 @@ def analyze(symbol):
         "trend1h":t1,
         "trend15m":t15,
         "icc_state":"CONTINUATION",
+        "latest_close": round(price, 6),
+        "minimum_score":MIN_CONFLUENCE,
+        "sides": side_summary,
         "confluence_checks":{
             "indication":True,
             "correction":True,
@@ -1128,7 +2034,8 @@ def analyze(symbol):
             "higher_timeframes_agree":True,
             "15m_not_opposed":True
         },
-        "data_source":("Deriv public WebSocket" if asset_group in ("CRYPTO", "SYNTHETICS") else "BiQuote public OHLC feed"),
+        "data_source":data_source,
+            "market_status":market_status,
         "news_available":n["available"],
         "fundamental":fund,
         "news_source":n.get("source", "GDELT"),
@@ -1314,12 +2221,12 @@ def market_data_status():
     }
 
     def check_one(label, provider_symbol):
-        candles, error = td(provider_symbol, "5min", 50)
+        candles, error, provider = td(provider_symbol, "5min", 50)
         if error or not candles:
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
                 "message": error or "No completed candles returned."
             }
         latest = candles[-1]
@@ -1333,14 +2240,14 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
                 "message": "Latest candle has no valid UTC timestamp."
             }
 
         return {
             "symbol": label,
             "status": "OK" if age_seconds <= 1200 else "STALE",
-            "source": "Deriv public WebSocket" if label in ("BTC/USD", "Volatility 75 Index", "Boom 500 Index") else "BiQuote public OHLC",
+            "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
             "timeframe": "5min",
             "completed_candles": len(candles),
             "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
@@ -1411,7 +2318,7 @@ def market_data_universe_status():
     }
 
     def check_one(label, item):
-        candles, error = td(item["provider"], "5min", 50)
+        candles, error, provider = td(item["provider"], "5min", 50)
         source = "Deriv public WebSocket" if item["group"] == "SYNTHETICS" else "BiQuote public OHLC"
         result = {
             "symbol": label,
@@ -1517,6 +2424,10 @@ def api_blueprint():
         "latest_close": result.get("latest_close"),
         "atr": result.get("atr"),
         "data_source": result.get("data_source"),
+        "market_status": result.get("market_status"),
+        "blockers": result.get("blockers", []),
+        "minimum_score": result.get("minimum_score"),
+        "sides": result.get("sides"),
         "news_source": result.get("news_source", "GDELT"),
         "news_available": result.get("news_available", False),
         "fundamental": result.get("fundamental", {"bias":"UNAVAILABLE","impact":"UNKNOWN"}),
@@ -1524,52 +2435,125 @@ def api_blueprint():
     })
 
 
+_SCAN_CACHE = {"started": 0.0, "payload": None}
+_SCAN_CACHE_LOCK = threading.Lock()
+SCAN_CACHE_TTL = 90        # seconds a completed scan is reused
+SCAN_BUDGET = 75           # hard wall-clock budget for one scan, in seconds
+SCAN_WORKERS = 5           # concurrent instruments; each also fetches 4 timeframes
+
+
+def _scan_payload(results_by_symbol, timed_out):
+    scan_details = [results_by_symbol[name] for name in ASSETS if name in results_by_symbol]
+    qualified = [item for item in scan_details if item.get("status") == "QUALIFIED"]
+    qualified.sort(key=lambda item: item.get("score", 0), reverse=True)
+
+    counts = {}
+    for item in scan_details:
+        state = item.get("status", "UNKNOWN")
+        counts[state] = counts.get(state, 0) + 1
+    if timed_out:
+        counts["SCAN TIMEOUT"] = counts.get("SCAN TIMEOUT", 0) + timed_out
+
+    return {
+        "session": current_session(),
+        "daily_maximum": MAX_DAILY,
+        "qualified_count": len(qualified),
+        "scanned_count": len(scan_details),
+        "unfinished_count": timed_out,
+        "status_counts": counts,
+        "results": qualified[:MAX_DAILY],
+        "scan_details": scan_details,
+        "data_sources": {
+            "forex_metals_indices_crypto": "BiQuote public OHLC feed",
+            "synthetics": "Deriv public WebSocket",
+            "news": "GDELT primary, verified publisher RSS fallback",
+        },
+        "cached": False,
+    }
+
+
 @app.route("/api/scan")
 def api_scan():
+    """Scan the universe. Parallel, deadline-bounded and cached.
 
-    symbol=request.args.get("symbol")
+    The previous sequential loop needed minutes for 31 instruments and always
+    exceeded the worker timeout, so the endpoint returned nothing at all.
+    """
+    symbol = (request.args.get("symbol") or "").strip()
 
     if symbol:
         if symbol not in ASSETS:
             return jsonify({
-                "symbol":symbol,
-                "status":"ERROR",
-                "message":"Unsupported symbol. Choose a symbol listed by TW Trades."
+                "symbol": symbol,
+                "status": "ERROR",
+                "message": "Unsupported symbol. Choose a symbol listed by TW Trades."
             }), 400
         result = analyze(symbol)
-        persist_qualified_signal(result)
+        try:
+            persist_qualified_signal(result)
+        except Exception:
+            app.logger.exception("Signal persistence failed for %s", symbol)
         return jsonify(result)
 
-    results=[]
-    scan_details=[]
+    refresh = (request.args.get("refresh") or "").lower() in ("1", "true", "yes")
+    now = time.monotonic()
+    with _SCAN_CACHE_LOCK:
+        if not refresh and _SCAN_CACHE["payload"] is not None:
+            if now - _SCAN_CACHE["started"] < SCAN_CACHE_TTL:
+                cached = dict(_SCAN_CACHE["payload"])
+                cached["cached"] = True
+                cached["cache_age_seconds"] = round(now - _SCAN_CACHE["started"], 1)
+                return jsonify(cached)
 
-    for asset in ASSETS:
-        result=analyze(asset)
-        scan_details.append(result)
+    from concurrent.futures import ThreadPoolExecutor, wait
 
-        if result.get("status")=="QUALIFIED":
-            persist_qualified_signal(result)
-            results.append(result)
+    results_by_symbol = {}
+    deadline = time.monotonic() + SCAN_BUDGET
+    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as pool:
+        futures = {pool.submit(analyze, name): name for name in ASSETS}
+        done, pending = wait(futures, timeout=SCAN_BUDGET)
+        for future in done:
+            name = futures[future]
+            try:
+                results_by_symbol[name] = future.result()
+            except Exception as exc:
+                app.logger.exception("Scan failed for %s", name)
+                results_by_symbol[name] = {
+                    "symbol": name,
+                    "status": "DATA ERROR",
+                    "message": "Analysis failed: " + str(exc),
+                }
+        for future in pending:
+            name = futures[future]
+            results_by_symbol[name] = {
+                "symbol": name,
+                "status": "SCAN TIMEOUT",
+                "message": "Not completed within the " + str(SCAN_BUDGET) + "s scan budget. Retry shortly.",
+            }
+            future.cancel()
 
-    results.sort(
-        key=lambda x:x.get("score",0),
-        reverse=True
-    )
+    payload = _scan_payload(results_by_symbol, len(pending))
 
-    counts={}
-    for result in scan_details:
-        state=result.get("status","UNKNOWN")
-        counts[state]=counts.get(state,0)+1
+    # Persist sequentially: sqlite connections are per-call and concurrent
+    # writes from worker threads would contend for the write lock.
+    for item in payload["results"]:
+        try:
+            persist_qualified_signal(item)
+        except Exception:
+            app.logger.exception("Signal persistence failed for %s", item.get("symbol"))
 
-    return jsonify({
-        "session":current_session(),
-        "daily_maximum":MAX_DAILY,
-        "qualified_count":len(results),
-        "scanned_count":len(scan_details),
-        "status_counts":counts,
-        "results":results[:MAX_DAILY],
-        "scan_details":scan_details
-    })
+    with _SCAN_CACHE_LOCK:
+        _SCAN_CACHE["payload"] = dict(payload)
+        _SCAN_CACHE["started"] = time.monotonic()
+
+    return jsonify(payload)
+
+
+@app.route("/api/news/status")
+def api_news_status():
+    """Read-only health of the headline layer. Never returns invented content."""
+    return jsonify(news_diagnostics())
+
 
 @app.route("/api/news")
 def api_news():
@@ -1593,8 +2577,27 @@ def api_ai():
         ai_analysis(payload)
     )
 
+def _commit_authorised():
+    """Committing a signal must be authenticated.
+
+    Either an admin session, or a shared token from COMMIT_API_TOKEN supplied as
+    X-API-Token (or a Bearer token) for an external poster.
+    """
+    token = os.environ.get("COMMIT_API_TOKEN", "").strip()
+    if token:
+        supplied = (request.headers.get("X-API-Token", "").strip()
+                    or request.headers.get("Authorization", "").replace("Bearer ", "").strip())
+        return bool(supplied) and secrets.compare_digest(supplied, token)
+    return bool(session.get("admin"))
+
+
 @app.route("/api/commit",methods=["POST"])
 def commit():
+
+    if not _commit_authorised():
+        return jsonify({
+            "error": "Unauthorised. Sign in as admin, or configure COMMIT_API_TOKEN and send it as X-API-Token."
+        }), 401
 
     data=request.get_json(
         force=True,
@@ -1680,25 +2683,29 @@ def commit():
 def login():
     if request.method == "POST":
         password = request.form.get("password", "")
+        client = _client_ip()
 
-        hashed = hashlib.sha256(
-            password.encode()
-        ).hexdigest()
+        if _login_blocked("admin", client):
+            return _too_many_attempts_page(), 429
+
+        stored = get_setting("admin_password_hash")
 
         # Allow the owner to recover admin access using a private Render
         # environment variable. On successful recovery, sync the database hash.
         recovery_password = os.environ.get("ADMIN_PASSWORD", "")
-        if (
-            hashed == get_setting("admin_password_hash")
-            or (
-                recovery_password
-                and secrets.compare_digest(password, recovery_password)
-            )
-        ):
-            if recovery_password and secrets.compare_digest(password, recovery_password):
-                set_setting("admin_password_hash", hashed)
+        ok_stored = _verify_password(password, stored)
+        ok_recovery = bool(recovery_password) and secrets.compare_digest(password, recovery_password)
+
+        if ok_stored or ok_recovery:
+            _login_succeeded("admin", client)
+            # Migrate a legacy SHA-256 hash, or the recovery password, to PBKDF2.
+            if ok_recovery or _needs_rehash(stored):
+                set_setting("admin_password_hash", _hash_password(password))
+            session.clear()
             session["admin"] = True
             return redirect("/admin")
+
+        _login_failed("admin", client)
 
         return """
         <!doctype html>
@@ -1876,9 +2883,7 @@ def admin():
         if password:
             set_setting(
                 "admin_password_hash",
-                hashlib.sha256(
-                    password.encode()
-                ).hexdigest()
+                _hash_password(password)
             )
 
     return render_template_string(
@@ -4024,355 +5029,7 @@ Instagram · @topwavetradesalltime
      TW TRADES REAL TRADINGVIEW TERMINAL
 ========================================================= -->
 
-<section id="twRealTradingView"
-         style="padding:28px 0;">
 
-    <div class="tw-live-card">
-
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            align-items:flex-start;
-            gap:15px;
-            flex-wrap:wrap;
-        ">
-
-            <div>
-                <div class="tw-live-kicker">
-                    TW TRADES • LIVE MARKET TERMINAL
-                </div>
-
-                <h2 style="margin:5px 0 5px;">
-                    TradingView Market Chart
-                </h2>
-
-                <p style="
-                    color:#8997aa;
-                    margin:0;
-                    line-height:1.6;
-                ">
-                    Interactive real-market chart connected to TradingView.
-                    Use it with the TW Trades scanner and Blueprint analysis.
-                </p>
-            </div>
-
-            <div style="
-                display:flex;
-                gap:8px;
-                flex-wrap:wrap;
-            ">
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('XAUUSD')">
-                    GOLD
-                </button>
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('EURUSD')">
-                    EUR/USD
-                </button>
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('GBPUSD')">
-                    GBP/USD
-                </button>
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('USDJPY')">
-                    USD/JPY
-                </button>
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('NASDAQ')">
-                    NASDAQ
-                </button>
-
-                <button
-                    class="tw-live-action"
-                    type="button"
-                    onclick="twTradingViewSymbol('BTCUSD')">
-                    BTC/USD
-                </button>
-
-            </div>
-
-        </div>
-
-        <div style="
-            display:flex;
-            gap:8px;
-            flex-wrap:wrap;
-            margin:20px 0 14px;
-        ">
-
-            <button
-                type="button"
-                class="tw-chart-time"
-                onclick="twChartInterval('5')">
-                5M
-            </button>
-
-            <button
-                type="button"
-                class="tw-chart-time"
-                onclick="twChartInterval('15')">
-                15M
-            </button>
-
-            <button
-                type="button"
-                class="tw-chart-time"
-                onclick="twChartInterval('60')">
-                1H
-            </button>
-
-            <button
-                type="button"
-                class="tw-chart-time"
-                onclick="twChartInterval('240')">
-                4H
-            </button>
-
-            <button
-                type="button"
-                class="tw-chart-time"
-                onclick="twChartInterval('D')">
-                1D
-            </button>
-
-        </div>
-
-        <div id="twTradingViewChart"
-             style="
-                width:100%;
-                height:620px;
-                min-height:450px;
-                border-radius:18px;
-                overflow:hidden;
-                background:#05080d;
-                border:1px solid rgba(255,255,255,.07);
-             ">
-
-            <div style="
-                height:100%;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                color:#7f8da1;
-            ">
-                Loading TradingView...
-            </div>
-
-        </div>
-
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            gap:12px;
-            flex-wrap:wrap;
-            margin-top:12px;
-            color:#7f8da1;
-            font-size:12px;
-        ">
-
-            <span>
-                CHART:
-                <strong id="twChartSymbol"
-                      style="color:#00ffd0;">
-                    XAUUSD
-                </strong>
-            </span>
-
-            <span>
-                TIMEFRAME:
-                <strong id="twChartInterval"
-                      style="color:#00ffd0;">
-                    5M
-                </strong>
-            </span>
-
-            <span>
-                SOURCE:
-                <strong style="color:#00ffd0;">
-                    TRADINGVIEW
-                </strong>
-            </span>
-
-        </div>
-
-    </div>
-
-</section>
-
-<script>
-
-(function(){
-
-    let twTVSymbol = "XAUUSD";
-    let twTVInterval = "5";
-
-    window.twTradingViewSymbol = function(symbol){
-
-        twTVSymbol = symbol;
-
-        const label =
-            document.getElementById("twChartSymbol");
-
-        if(label){
-            label.textContent = symbol;
-        }
-
-        renderTradingView();
-
-        if(window.twSelectAsset){
-
-            const map = {
-                "XAUUSD":"XAU/USD",
-                "EURUSD":"EUR/USD",
-                "GBPUSD":"GBP/USD",
-                "USDJPY":"USD/JPY",
-                "NASDAQ":"NASDAQ",
-                "BTCUSD":"BTC/USD"
-            };
-
-            if(map[symbol]){
-                window.twSelectAsset(map[symbol]);
-            }
-
-        }
-
-    };
-
-    window.twChartInterval = function(interval){
-
-        twTVInterval = interval;
-
-        const names = {
-            "5":"5M",
-            "15":"15M",
-            "60":"1H",
-            "240":"4H",
-            "D":"1D"
-        };
-
-        const label =
-            document.getElementById("twChartInterval");
-
-        if(label){
-            label.textContent =
-                names[interval] || interval;
-        }
-
-        renderTradingView();
-
-    };
-
-    function renderTradingView(){
-
-        const container =
-            document.getElementById(
-                "twTradingViewChart"
-            );
-
-        if(!container) return;
-
-        container.innerHTML = "";
-
-        const wrapper =
-            document.createElement("div");
-
-        wrapper.className =
-            "tradingview-widget-container";
-
-        wrapper.style.width = "100%";
-        wrapper.style.height = "100%";
-
-        const chart =
-            document.createElement("div");
-
-        chart.className =
-            "tradingview-widget-container__widget";
-
-        chart.style.width = "100%";
-        chart.style.height = "100%";
-
-        wrapper.appendChild(chart);
-        container.appendChild(wrapper);
-
-        const script =
-            document.createElement("script");
-
-        script.src =
-            "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-
-        script.type = "text/javascript";
-        script.async = true;
-
-        const config = {
-
-            autosize: true,
-
-            symbol:
-                "OANDA:" + twTVSymbol,
-
-            interval:
-                twTVInterval,
-
-            timezone:
-                "Africa/Johannesburg",
-
-            theme:
-                "dark",
-
-            style:
-                "1",
-
-            locale:
-                "en",
-
-            enable_publishing:
-                false,
-
-            allow_symbol_change:
-                true,
-
-            calendar:
-                false,
-
-            support_host:
-                "https://www.tradingview.com"
-
-        };
-
-        script.textContent =
-            JSON.stringify(config);
-
-        wrapper.appendChild(script);
-
-    }
-
-    document.addEventListener(
-        "DOMContentLoaded",
-        function(){
-
-            renderTradingView();
-
-        }
-    );
-
-})();
-
-</script>
 
 
 
@@ -5578,7 +6235,7 @@ TikTok · @snowFx3
 
         <div class="tw-chart-wrap">
 
-            <div id="twTradingViewChart"></div>
+            <div id="twTradingViewChartMarket"></div>
 
         </div>
 
@@ -5800,7 +6457,7 @@ TikTok · @snowFx3
     window.twLoadTradingView = function(symbol){
 
         const container =
-            document.getElementById("twTradingViewChart");
+            document.getElementById("twTradingViewChartMarket");
 
         const status =
             document.getElementById("twChartStatus");
@@ -7169,7 +7826,7 @@ TikTok · @snowFx3
 
     if(
         document.getElementById(
-            "twTradingViewChart"
+            "twTradingViewChartMarket"
         )
     ){
 
@@ -7420,16 +8077,26 @@ TikTok · @snowFx3
   }
 }
 
+#twTradingViewChartMarket{
+    width:100%;
+    min-height:450px;
+    height:520px;
+    border-radius:14px;
+    overflow:hidden;
+}
+
 /* HOMEPAGE CLEANUP: one canonical scanner/chart; suppress duplicate injected copies only. */
-#twRealTradingView,
 #twScannerDetails,
 #intelligence-terminal,
-#apex-dashboard,
-#tw-live-market-upgrade,
 #tw-live-terminal-v2 {
   display: none !important;
 }
-#terminal, #intelligence, #ai-intelligence { display:block; }
+/* #tw-live-market-upgrade owns the #scanner navigation target and the market
+   chart, so it must stay visible. */
+/* #apex-dashboard is a unique top-level section linked from the primary
+   navigation, so it is intentionally not suppressed here. */
+#terminal, #intelligence, #ai-intelligence, #apex-dashboard,
+#tw-live-market-upgrade { display:block; }
 
 
 </style>
@@ -7916,14 +8583,19 @@ def user_access():
             else:
                 try:
                     c.execute("INSERT INTO users(email,password_hash,display_name,access_level,access_status,created_at) VALUES(?,?,?,'free','active',?)",
-                        (email, hashlib.sha256(password.encode()).hexdigest(), name, datetime.now(timezone.utc).isoformat()))
+                        (email, _hash_password(password), name, datetime.now(timezone.utc).isoformat()))
                     c.commit()
                 except sqlite3.IntegrityError:
                     message = "That email is already registered. Please log in."
         if not message and action == "login":
             user = c.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-            digest = hashlib.sha256(password.encode()).hexdigest()
-            if user and secrets.compare_digest(user["password_hash"], digest):
+            if user and _verify_password(password, user["password_hash"]):
+                # Upgrade a legacy SHA-256 hash on the owner's next login.
+                if _needs_rehash(user["password_hash"]):
+                    c.execute("UPDATE users SET password_hash=? WHERE id=?",
+                              (_hash_password(password), user["id"]))
+                    c.commit()
+                session.clear()
                 session["user_id"] = user["id"]
                 session["user_email"] = user["email"]
                 session["user_name"] = user["display_name"]
@@ -7959,6 +8631,42 @@ def home():
         PAGE,
         courses=COURSES
     )
+
+@app.route("/api/db/status")
+def api_db_status():
+    """Read-only database diagnostics for the owner. No credentials are exposed."""
+    if not session.get("admin"):
+        return jsonify({"error": "Admin session required."}), 401
+    tables = {}
+    try:
+        c = db()
+        for name in ("settings", "signals", "users"):
+            try:
+                tables[name] = c.execute("SELECT COUNT(*) n FROM " + name).fetchone()["n"]
+            except sqlite3.DatabaseError:
+                tables[name] = "missing"
+        schema_version = None
+        try:
+            row = c.execute("SELECT value FROM settings WHERE key='schema_version'").fetchone()
+            schema_version = row["value"] if row else None
+        except sqlite3.DatabaseError:
+            pass
+        c.close()
+    except sqlite3.DatabaseError as exc:
+        return jsonify({"error": "Database unreadable.", "detail": str(exc)}), 500
+
+    return jsonify({
+        "path": DB,
+        "path_is_absolute": os.path.isabs(DB),
+        "path_override_env": next((k for k in ("TW_DATABASE_PATH", "DATABASE_PATH", "DB_PATH")
+                                   if os.environ.get(k, "").strip()), None),
+        "exists": os.path.exists(DB),
+        "size_bytes": os.path.getsize(DB) if os.path.exists(DB) else 0,
+        "schema_version": schema_version,
+        "tables": tables,
+        "password_hashes": password_hash_audit(),
+    })
+
 
 @app.route("/health")
 def health():

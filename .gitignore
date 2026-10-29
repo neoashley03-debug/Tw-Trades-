@@ -13,3 +13,7 @@ server.log
 error.log
 app_backup_*.py
 app_before_fix_*.py
+
+# local flask session key
+.flask_secret_key
+tw_blueprint.db
