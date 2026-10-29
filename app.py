@@ -8117,7 +8117,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 #intelligence .news-item .tw-news-description{font-size:13px;line-height:1.7;overflow-wrap:anywhere;color:#aebbc7}
 #intelligence .news-item .tw-news-link{display:inline-block;margin-top:8px;color:var(--tw-accent);font-size:12px;font-weight:800;text-decoration:none}
 #intelligence .tw-news-note{font-size:12px;line-height:1.65;color:#8291a0;margin-top:16px}
-@media(max-width:760px){#intelligence .news{grid-template-columns:1fr}#intelligence .news-controls{padding:13px}#intelligence #tw-news-symbol{flex:1 1 100%;width:100%;min-width:0}#intelligence #tw-news-refresh{width:100%}#intelligence #tw-news-count{margin-left:0}}
+@media(max-width:760px){ #intelligence .news{grid-template-columns:1fr}#intelligence .news-controls{padding:13px}#intelligence #tw-news-symbol{flex:1 1 100%;width:100%;min-width:0}#intelligence #tw-news-refresh{width:100%}#intelligence #tw-news-count{margin-left:0}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>"""
     page = page.replace("</head>", style + "\n</head>", 1)
