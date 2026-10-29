@@ -600,50 +600,103 @@ def td(symbol, interval, size=100):
 # ============================================================
 
 def news(symbol):
-    """Fetch real Yahoo Finance RSS headlines. Headlines are not treated as sentiment."""
+    """Fetch relevant Yahoo Finance headlines and a transparent, non-trading headline-tone estimate."""
     import xml.etree.ElementTree as ET
     import html
     import re
     from urllib.parse import urlencode
     from email.utils import parsedate_to_datetime
 
-    if symbol not in ASSETS:
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "Yahoo Finance", "message": "Unsupported instrument."}
+    def unavailable(message):
+        return {
+            "available": False, "sentiment": 0, "sentiment_available": False,
+            "headline_sentiment_available": False, "headline_sentiment": "UNAVAILABLE",
+            "headline_sentiment_score": None,
+            "sentiment_method": "No verified sentiment feed; rule-based headline tone is informational only.",
+            "articles": [], "source": "Yahoo Finance", "message": message
+        }
 
-    # Yahoo Finance ticker symbols used for symbol-specific headline feeds.
+    if symbol not in ASSETS:
+        return unavailable("Unsupported instrument.")
+
     yahoo_symbols = {
-        "XAU/USD": "GC=F",
-        "EUR/USD": "EURUSD=X",
-        "GBP/USD": "GBPUSD=X",
-        "USD/JPY": "JPY=X",
-        "GBP/JPY": "GBPJPY=X",
-        "EUR/JPY": "EURJPY=X",
-        "EUR/AUD": "EURAUD=X",
-        "GBP/AUD": "GBPAUD=X",
-        "USD/CHF": "CHF=X",
-        "AUD/USD": "AUDUSD=X",
-        "USD/CAD": "CAD=X",
-        "NASDAQ": "^IXIC",
-        "US30": "^DJI",
-        "S&P 500": "^GSPC",
-        "DAX40": "^GDAXI",
-        "FTSE100": "^FTSE",
-        "VIX": "^VIX",
-        "BTC/USD": "BTC-USD",
-        "ETH/USD": "ETH-USD",
-        "SOL/USD": "SOL-USD",
-        "XRP/USD": "XRP-USD",
-        "ADA/USD": "ADA-USD",
-        "DOGE/USD": "DOGE-USD"
+        "XAU/USD": "GC=F", "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X",
+        "USD/JPY": "JPY=X", "GBP/JPY": "GBPJPY=X", "EUR/JPY": "EURJPY=X",
+        "EUR/AUD": "EURAUD=X", "GBP/AUD": "GBPAUD=X", "USD/CHF": "CHF=X",
+        "AUD/USD": "AUDUSD=X", "USD/CAD": "CAD=X", "NASDAQ": "^IXIC",
+        "US30": "^DJI", "S&P 500": "^GSPC", "DAX40": "^GDAXI",
+        "FTSE100": "^FTSE", "VIX": "^VIX", "BTC/USD": "BTC-USD",
+        "ETH/USD": "ETH-USD", "SOL/USD": "SOL-USD", "XRP/USD": "XRP-USD",
+        "ADA/USD": "ADA-USD", "DOGE/USD": "DOGE-USD"
     }
     ticker = yahoo_symbols.get(symbol)
     if not ticker:
-        return {
-            "available": False, "sentiment": 0, "sentiment_available": False,
-            "articles": [], "source": "Yahoo Finance",
-            "message": "Yahoo Finance does not provide a mapped news ticker for this synthetic instrument. News is unavailable; no sentiment inferred."
-        }
+        return unavailable(
+            "Yahoo Finance does not provide a mapped news ticker for this synthetic instrument. "
+            "News and headline tone are unavailable; no sentiment is inferred."
+        )
+
+    group = ASSETS[symbol].get("group", "FOREX")
+    if group == "METALS":
+        relevance_terms = [
+            "gold futures", "gold price", "spot gold", "bullion", "precious metal",
+            "xau", "us dollar", "dollar", "treasury yield", "bond yield", "yields",
+            "federal reserve", "fed", "inflation", "cpi", "interest rate", "safe haven",
+            "central bank", "payroll", "nonfarm", "geopolitical", "gold slips",
+            "gold rises", "gold falls", "gold climbs", "gold rallies"
+        ]
+        direct_terms = ("gold futures", "gold price", "spot gold", "bullion", "xau",
+                        "treasury yield", "federal reserve", "inflation", "cpi", "safe haven")
+    elif group == "FOREX":
+        relevance_terms = [
+            "euro", "eur/usd", "pound", "sterling", "britain", "united kingdom",
+            "bank of england", "boe", "australia", "aussie", "rba", "yen", "japan",
+            "bank of japan", "boj", "swiss franc", "switzerland", "canada", "loonie",
+            "bank of canada", "boc", "us dollar", "dollar", "federal reserve", "fed",
+            "ecb", "european central bank", "inflation", "cpi", "interest rate",
+            "treasury yield", "bond yield", "gdp", "employment", "jobs report",
+            "central bank", "payroll", "nonfarm"
+        ]
+        direct_terms = tuple(relevance_terms)
+    elif group == "INDICES":
+        relevance_terms = [
+            "nasdaq", "s&p 500", "dow jones", "dax", "ftse", "volatility index",
+            "stock market", "stocks", "equities", "technology stocks", "tech stocks",
+            "federal reserve", "fed", "treasury yields", "bond yields", "inflation",
+            "cpi", "earnings", "jobs report", "interest rates", "economic growth"
+        ]
+        direct_terms = tuple(relevance_terms[:10])
+    else:
+        relevance_terms = [
+            "bitcoin", "btc", "ethereum", "ether", "crypto", "cryptocurrency",
+            "digital assets", "blockchain", "crypto market", "crypto etf", "bitcoin etf",
+            "ethereum etf", "sec", "crypto exchange", "token", "solana", "xrp",
+            "cardano", "dogecoin"
+        ]
+        direct_terms = tuple(relevance_terms)
+
+    def has_term(term, text):
+        # Match short tickers/acronyms as words to avoid false matches such as
+        # "SEC" inside "second" or "ether" inside "whether".
+        if len(term) <= 4 and term.replace(" ", "").isalpha():
+            return re.search(r"\b" + re.escape(term) + r"\b", text) is not None
+        return term in text
+
+    positive_cues = (
+        "rises", "gains", "rallies", "rally", "climbs", "surges", "jumps",
+        "strengthens", "higher", "beats expectations", "stronger than expected",
+        "inflows", "bullish", "eases", "cooling inflation", "dollar weakens",
+        "yields fall", "yields decline", "rate cuts", "safe-haven demand",
+        "gold rises", "gold gains", "gold climbs", "bitcoin rises", "stocks rise",
+        "record high", "upgraded", "upgrade", "rebound", "recovery"
+    )
+    negative_cues = (
+        "falls", "drops", "slips", "tumbles", "declines", "weakens", "lower",
+        "misses expectations", "weaker than expected", "outflows", "bearish",
+        "inflation heats up", "dollar strengthens", "yields rise", "rate hikes",
+        "gold falls", "gold slips", "gold drops", "bitcoin falls", "stocks fall",
+        "selloff", "sell-off", "downgraded", "downgrade", "losses", "recession"
+    )
 
     feed_url = "https://feeds.finance.yahoo.com/rss/2.0/headline?" + urlencode({
         "s": ticker, "region": "US", "lang": "en-US"
@@ -655,48 +708,98 @@ def news(symbol):
         )
         response.raise_for_status()
         root = ET.fromstring(response.content)
-        articles = []
-        for item in root.findall(".//item")[:10]:
+        relevant_articles = []
+        for item in root.findall(".//item"):
             title = (item.findtext("title") or "").strip()
             url = (item.findtext("link") or "").strip()
             if not title or not url.startswith(("https://", "http://")):
                 continue
+            description = html.unescape(item.findtext("description") or "")
+            description = re.sub(r"<[^>]*>", " ", description)
+            description = re.sub(r"\s+", " ", description).strip()
+            combined = (title + " " + description).lower()
+            matches = [term for term in relevance_terms if has_term(term, combined)]
+            direct = any(has_term(term, combined) for term in direct_terms)
+            if group == "METALS":
+                relevant = direct or len(matches) >= 2
+            else:
+                relevant = bool(matches)
+            if not relevant:
+                continue
+
+            title_lower = title.lower()
+            desc_lower = description.lower()
+            positive = sum(2 for cue in positive_cues if has_term(cue, title_lower))
+            positive += sum(1 for cue in positive_cues if has_term(cue, desc_lower))
+            negative = sum(2 for cue in negative_cues if has_term(cue, title_lower))
+            negative += sum(1 for cue in negative_cues if has_term(cue, desc_lower))
+            tone_score = positive - negative
+            tone = "BULLISH" if tone_score > 0 else "BEARISH" if tone_score < 0 else "MIXED / UNCLEAR"
             published = (item.findtext("pubDate") or "").strip()
             try:
                 published = parsedate_to_datetime(published).isoformat() if published else ""
             except (TypeError, ValueError, OverflowError):
                 pass
-            description = (item.findtext("description") or "").strip()
-            # RSS descriptions can contain HTML; return plain text to the UI.
-            description = html.unescape(re.sub(r"<[^>]*>", " ", description))
-            description = re.sub(r"\s+", " ", description).strip()
-            articles.append({
-                "title": title, "url": url, "description": description,
-                "snippet": description, "published_at": published,
-                "source": "Yahoo Finance"
+            relevant_articles.append({
+                "title": title,
+                "url": url,
+                "description": description,
+                "snippet": description,
+                "published_at": published,
+                "source": "Yahoo Finance",
+                "relevance": "DIRECT" if direct else "RELATED",
+                "headline_tone": tone,
+                "headline_tone_score": tone_score
             })
+
+        relevant_articles.sort(
+            key=lambda article: (
+                article["relevance"] == "DIRECT",
+                article["published_at"] or ""
+            ),
+            reverse=True
+        )
+        articles = relevant_articles[:10]
+        scored = [article for article in articles if article["headline_tone_score"] != 0]
+        aggregate = sum(article["headline_tone_score"] for article in scored)
+        magnitude = sum(abs(article["headline_tone_score"]) for article in scored)
+        tone_available = len(scored) >= 2 and magnitude > 0
+        tone_score = round(100 * aggregate / magnitude) if tone_available else None
+        if not tone_available:
+            tone_label = "UNAVAILABLE"
+        elif tone_score >= 20:
+            tone_label = "BULLISH"
+        elif tone_score <= -20:
+            tone_label = "BEARISH"
+        else:
+            tone_label = "MIXED / NEUTRAL"
+
         return {
             "available": bool(articles),
+            # Keep this verified-score field false: the rule-based estimate must
+            # never affect the existing TW Blueprint qualification score.
             "sentiment": 0,
             "sentiment_available": False,
+            "headline_sentiment_available": tone_available,
+            "headline_sentiment": tone_label,
+            "headline_sentiment_score": tone_score,
+            "headline_sentiment_sample": len(scored),
+            "sentiment_method": "Rule-based tone estimate from relevant Yahoo Finance headlines; informational only, not a verified sentiment feed and not used to qualify trades.",
             "articles": articles,
             "source": "Yahoo Finance",
             "message": (
-                "Yahoo Finance headlines loaded. Headlines are not verified sentiment scores."
+                "Relevant Yahoo Finance headlines loaded. Headline tone is a rule-based estimate, not verified sentiment and not used to qualify trades."
                 if articles else
-                "Yahoo Finance returned no headlines for this ticker. No sentiment inferred."
+                "Yahoo Finance returned no sufficiently relevant headlines for this instrument. No headline tone was inferred."
             )
         }
     except requests.Timeout:
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news request timed out. Retry shortly."}
+        return unavailable("Yahoo Finance news request timed out. Retry shortly.")
     except (requests.RequestException, ET.ParseError, ValueError):
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news is temporarily unavailable. Technical analysis remains separate."}
+        return unavailable("Yahoo Finance news is temporarily unavailable. Technical analysis remains separate.")
     except Exception:
         app.logger.exception("Yahoo Finance news processing failed.")
-        return {"available": False, "sentiment": 0, "sentiment_available": False,
-                "articles": [], "source": "Yahoo Finance", "message": "Yahoo Finance news could not be processed."}
+        return unavailable("Yahoo Finance news could not be processed.")
 
 # ============================================================
 # TECHNICAL INTELLIGENCE
@@ -8005,6 +8108,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 #intelligence #tw-news-refresh{background:var(--tw-accent);border-color:var(--tw-accent);color:#15110a;font-weight:800}
 #intelligence #tw-news-status{flex:1 1 100%;color:var(--tw-muted);font-size:12px;line-height:1.6}
 #intelligence #tw-news-count{margin-left:auto;color:#f0d69c;font-size:12px}
+#intelligence #tw-news-sentiment{flex:1 1 100%;font-size:12px;color:#f0d69c;line-height:1.6}
 #intelligence .news{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
 #intelligence .news-item{min-width:0;border-color:#293847;border-radius:15px;padding:18px;background:linear-gradient(145deg,rgba(16,25,34,.96),rgba(8,13,20,.96))}
 #intelligence .news-item h3{font-size:16px;line-height:1.45;overflow-wrap:anywhere}
@@ -8042,6 +8146,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 </select>
 <button id="tw-news-refresh" type="button">Refresh headlines</button>
 <span id="tw-news-count">Waiting for feed</span>
+<div id="tw-news-sentiment" role="status">Headline tone: unavailable</div>
 <div id="tw-news-status" role="status" aria-live="polite">Select a market to load current headlines.</div>
 </div>
 <div class="news" id="news">"""
@@ -8084,6 +8189,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
       const articles=data.articles;
       count.textContent=articles.length+" headline"+(articles.length===1?"":"s");
       status.textContent=data.message||(data.available?"Yahoo Finance headlines loaded.":"News is unavailable for this market.");
+      const sentiment=document.getElementById("tw-news-sentiment");
+      if(sentiment){
+        sentiment.textContent=data.headline_sentiment_available
+          ?("Headline tone estimate: "+data.headline_sentiment+" ("+data.headline_sentiment_score+"/100) · based on "+data.headline_sentiment_sample+" headlines; informational only, not used for trade qualification.")
+          :"Headline tone estimate unavailable; not enough directional headlines. No sentiment is inferred.";
+      }
       box.replaceChildren();
       if(!articles.length){box.appendChild(make("div","news-item",data.message||"No headlines returned. Try another market."));return;}
       articles.forEach(function(article){
