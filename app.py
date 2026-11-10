@@ -78,6 +78,10 @@ def _security_headers(response):
         "connect-src 'self' https:; "
         "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     )
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     if request.is_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -1063,6 +1067,7 @@ def yahoo_candles(symbol, interval, size=100):
             return None, "Yahoo Finance returned no series for " + ticker + ": " + str(error.get("description", "empty result")), None
         stamps = result.get("timestamp") or []
         quote = (result.get("indicators", {}).get("quote") or [{}])[0]
+        volumes = quote.get("volume") or []
         opens, highs, lows, closes = (quote.get("open") or [], quote.get("high") or [],
                                       quote.get("low") or [], quote.get("close") or [])
     except (AttributeError, IndexError, TypeError):
@@ -2251,7 +2256,7 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol), provider_symbol),
                 "message": "Latest candle has no valid UTC timestamp."
             }
 
