@@ -1,0 +1,20 @@
+name: Validate TW Trades
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [live-data-yuki-orderflow]
+
+jobs:
+  python-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Flask application
+        run: python -m py_compile app.py
