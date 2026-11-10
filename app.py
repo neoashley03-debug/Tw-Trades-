@@ -3678,7 +3678,7 @@ levels and invalidation framework.
  const chartEl=document.getElementById("yuki-chart");
  if(!symbolEl||!intervalEl||!chartEl)return;
  let chart=null,candleSeries=null,ema20Series=null,ema50Series=null,volumeSeries=null,lastContext=null;
- const fmt=(v)=>Number.isFinite(Number(v))?Number(v).toFixed(4):"Unavailable";
+ const fmt=(v)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toFixed(4):"Unavailable";
  function setStatus(t){document.getElementById("yuki-data-status").textContent=t;}
  function initChart(){
    if(!window.LightweightCharts){setStatus("Chart library failed to load; market analysis remains unavailable.");return;}
@@ -3697,6 +3697,7 @@ levels and invalidation framework.
    box.innerHTML=items.map(x=>'<div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;"><small style="color:#8290a4;">'+x[0]+'</small><div style="font-weight:800;margin-top:5px;">'+x[1]+'</div></div>').join("");
  }
  async function load(){
+   if(!candleSeries){setStatus("TradingView chart library unavailable; no chart or indicators loaded.");return;}
    setStatus("Requesting fresh "+symbolEl.value+" "+intervalEl.value+" candles…");
    document.getElementById("yuki-orderflow").textContent="Checking whether the provider supplies genuine volume and aggressor-side data…";
    try{
@@ -3747,6 +3748,7 @@ levels and invalidation framework.
    }catch(err){addMessage("Yuki","Unavailable: "+err.message);status.textContent="No response generated; configure the AI key or restore the live data source.";}
  });
  initChart();load();
+ window.setInterval(load,60000);
 })();
 </script>
 
