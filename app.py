@@ -5933,7 +5933,7 @@ twRunTerminal();
       <iframe
         src="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard"
         title="Apex Flow Analytics dashboard"
-        loading="lazy"
+        loading="eager"
         referrerpolicy="strict-origin-when-cross-origin"
         allow="clipboard-read; clipboard-write; fullscreen"
         allowfullscreen
