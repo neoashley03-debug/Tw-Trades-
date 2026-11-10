@@ -470,11 +470,16 @@ def biquote_candles(symbol, interval, size=100):
                     "low": float(bar["low"]),
                     "close": float(bar["close"])
                 }
-                raw_volume = bar.get("volume", bar.get("tickVolume", bar.get("tick_volume")))
+                raw_volume = bar.get("volume")
                 if raw_volume is not None:
                     volume = float(raw_volume)
                     if volume >= 0:
                         item["volume"] = volume
+                raw_tick_volume = bar.get("tickVolume", bar.get("tick_volume"))
+                if raw_tick_volume is not None:
+                    tick_volume = float(raw_tick_volume)
+                    if tick_volume >= 0:
+                        item["tick_volume"] = tick_volume
                 normalised.append(item)
             except (KeyError, TypeError, ValueError, OverflowError):
                 continue
@@ -1846,9 +1851,12 @@ def build_yuki_market_payload(symbol, interval):
     latest = candles[-1]
     stamp = datetime.fromisoformat(latest["time"].replace("Z", "+00:00"))
     age_minutes = round(max(0, (datetime.now(timezone.utc)-stamp).total_seconds())/60, 1)
-    source = "Deriv public WebSocket" if ASSETS[symbol]["group"] in {"CRYPTO", "SYNTHETICS"} else "BiQuote public OHLC"
+    group = ASSETS[symbol]["group"]
+    source = "Deriv public WebSocket" if group in {"CRYPTO", "SYNTHETICS"} else "BiQuote public OHLC"
+    market_status = "OPEN_FEED" if group in {"CRYPTO", "SYNTHETICS"} or not fx_market_closed() else "MARKET_CLOSED"
     return {
         "symbol": symbol, "interval": interval, "source": source,
+        "market_status": market_status,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
         "candle_age_minutes": age_minutes,
@@ -1862,8 +1870,9 @@ def build_yuki_market_payload(symbol, interval):
             "rsi14": rsi_value(),
             "atr14": atr14,
             "vwap": vwap,
-            "vwap_basis": "Loaded chart window; only calculated when provider supplies volume.",
-            "volume_available": has_volume
+            "vwap_basis": "Loaded chart window; only calculated from provider-supplied trade volume.",
+            "volume_available": has_volume,
+            "tick_volume_available": all(bar.get("tick_volume") is not None for bar in candles)
         },
         "order_flow": {
             "status": "UNAVAILABLE",
