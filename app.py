@@ -732,46 +732,64 @@ def biquote_candles(symbol, interval, size=100):
         bars = payload.get("bars", [])
         if not isinstance(bars, list) or not bars:
             return None, "BiQuote returned no candles for " + provider_symbol, None
-        # API is newest-first. Drop the forming candle and retain the newest closed bars.
-        closed = [bar for bar in bars if not bar.get("isOpen", False)]
-        selected = list(reversed(closed[:int(size)]))
-        values = [{
-            "time": bar.get("openTime", ""),
-            "open": float(bar["open"]),
-            "high": float(bar["high"]),
-            "low": float(bar["low"]),
-            "close": float(bar["close"])
-        } for bar in selected]
+        # BiQuote has returned bars in different orderings. Sort by parsed UTC
+        # open time; never assume newest-first and accidentally select old data.
+        def parse_provider_time(raw):
+            if isinstance(raw, (int, float)):
+                number = float(raw)
+                return datetime.fromtimestamp(number / (1000 if number > 100000000000 else 1), timezone.utc)
+            value = str(raw or "").strip()
+            try:
+                number = float(value)
+                return datetime.fromtimestamp(number / (1000 if number > 100000000000 else 1), timezone.utc)
+            except ValueError:
+                stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp.astimezone(timezone.utc)
+
+        closed = [bar for bar in bars if str(bar.get("isOpen", False)).strip().lower() not in {"true", "1", "yes"}]
+        normalised = []
+        for bar in closed:
+            try:
+                stamp = parse_provider_time(bar.get("openTime"))
+                item = {
+                    "time": stamp.isoformat(),
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "close": float(bar["close"])
+                }
+                raw_volume = bar.get("volume")
+                if raw_volume is not None and float(raw_volume) >= 0:
+                    item["volume"] = float(raw_volume)
+                raw_tick_volume = bar.get("tickVolume", bar.get("tick_volume"))
+                if raw_tick_volume is not None and float(raw_tick_volume) >= 0:
+                    item["tick_volume"] = float(raw_tick_volume)
+                normalised.append(item)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+        normalised.sort(key=lambda item: item["time"])
+        deduped = {item["time"]: item for item in normalised}
+        values = list(deduped.values())[-int(size):]
         if not _valid_ohlc(values):
             return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol, None
 
-        # Fail closed on stale data while the relevant market is expected open.
-        # Crypto and synthetic indices are treated as 24/7; FX/metals/index
-        # freshness checks are suspended during the approximate weekly closure.
         latest_time = values[-1].get("time")
         try:
-            stamp = datetime.fromisoformat(str(latest_time).replace("Z", "+00:00"))
-            if stamp.tzinfo is None:
-                stamp = stamp.replace(tzinfo=timezone.utc)
-            age_seconds = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
-            age_seconds = max(0, age_seconds)
-        except (TypeError, ValueError):
+            stamp = parse_provider_time(latest_time)
+            age_seconds = max(0, (datetime.now(timezone.utc) - stamp).total_seconds())
+        except (TypeError, ValueError, OverflowError):
             return None, "Latest BiQuote candle has an invalid timestamp for " + provider_symbol, None
 
-        group = next((item.get("group") for item in ASSETS.values()
-                      if item.get("td") == symbol), "FOREX")
-        market_expected_open = (
-            group in ("CRYPTO", "SYNTHETICS")
-            or not fx_market_closed()
-        )
+        group = group_for_provider_symbol(symbol)
+        market_is_open = market_expected_open(group, symbol)
         interval_seconds = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval, 300)
-        freshness_limit = max(1200, interval_seconds * 2 + 300)
-        if market_expected_open and age_seconds > freshness_limit:
+        freshness_limit = _freshness_limit(interval, interval_seconds)
+        if market_is_open and age_seconds > freshness_limit:
             return None, (
-                "Stale market data rejected for " + provider_symbol +
+                "Stale BiQuote data rejected for " + provider_symbol +
                 ": latest completed candle is " + str(round(age_seconds / 60)) +
                 " minutes old; limit is " + str(round(freshness_limit / 60)) + " minutes."
-            )
+            ), None
         return values, None, "BiQuote public OHLC feed"
     except Exception as exc:
         return None, "BiQuote market feed failed: " + str(exc), None
@@ -887,7 +905,7 @@ def deriv_candles(symbol, interval, size=100):
 
         age_seconds = max(0, (datetime.now(timezone.utc) -
                               datetime.fromisoformat(values[-1]["time"])).total_seconds())
-        freshness_limit = max(1200, granularity * 2 + 300)
+        freshness_limit = _freshness_limit(interval, granularity)
         if age_seconds > freshness_limit:
             return None, (
                 "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
@@ -902,11 +920,11 @@ def deriv_candles(symbol, interval, size=100):
                 ws.close()
             except Exception:
                 pass
-def market_source_label(group=None):
+def market_source_label(group=None, symbol=None):
     """Accurate human-readable label for the feed that actually serves a group."""
     if group == "SYNTHETICS":
         return "Deriv public WebSocket"
-    if group == "INDICES":
+    if group == "INDICES" or symbol in {"ADA/USD", "DOGE/USD"}:
         return "Yahoo Finance chart API"
     return "BiQuote public OHLC feed"
 
@@ -956,7 +974,7 @@ def market_expected_open(group, symbol=None):
 
 
 def _freshness_limit(interval, granularity):
-    return max(1200, granularity * 2 + 300)
+    return max(120, granularity * 2)
 
 
 def _candle_age_seconds(values):
@@ -1119,33 +1137,20 @@ def yahoo_candles(symbol, interval, size=100):
 
 
 def td(symbol, interval, size=100):
-    """Route each instrument to a provider verified to serve it.
+    """Use one declared provider per instrument. Never silently switch feeds.
 
-    Returns (candles, error, provider).
-
-    Verified coverage:
-      * Indices: BiQuote returns HTTP 200 with an empty bar list for every
-        index, so indices are served by Yahoo Finance.
-      * Crypto/FX/metals: BiQuote first; Yahoo Finance when BiQuote is empty or
-        stale (ADA/USD and DOGE/USD are years out of date on BiQuote).
-      * Synthetics: Deriv only, and only with a configured App ID.
+    Indices use Yahoo Finance because BiQuote returned empty index bars in
+    provider checks. ADA/DOGE use Yahoo as their declared source because
+    BiQuote's historical candles were stale. Other FX, metals and crypto use
+    BiQuote. Deriv synthetics use Deriv only.
     """
     group = group_for_provider_symbol(symbol)
-
     if group == "SYNTHETICS":
         return deriv_candles(symbol, interval, size)
-
-    primary = biquote_candles(symbol, interval, size)
-    if primary[0]:
-        return primary
-
-    if group == "INDICES":
+    if group == "INDICES" or symbol in {"ADA/USD", "DOGE/USD"}:
         return yahoo_candles(symbol, interval, size)
+    return biquote_candles(symbol, interval, size)
 
-    fallback = yahoo_candles(symbol, interval, size)
-    if fallback[0]:
-        return fallback
-    return None, primary[1] + " | Yahoo Finance fallback: " + str(fallback[1]), None
 
 # ============================================================
 # MARKET NEWS — GDELT DOC API primary, verified publisher RSS fallback
