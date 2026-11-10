@@ -2253,11 +2253,12 @@ def market_data_status():
     def check_one(label, provider_symbol):
         candles, error, provider = td(provider_symbol, "5min", 50)
         if error or not candles:
+            message = error or "No completed candles returned."
             return {
                 "symbol": label,
-                "status": "ERROR",
+                "status": "STALE" if "stale" in message.lower() else "ERROR",
                 "source": provider or market_source_label(group_for_provider_symbol(provider_symbol), provider_symbol),
-                "message": error or "No completed candles returned."
+                "message": message
             }
         latest = candles[-1]
         raw_time = latest.get("time")
@@ -2357,9 +2358,10 @@ def market_data_universe_status():
             "timeframe": "5min"
         }
         if error or not candles:
+            message = error or "No completed candles returned."
             result.update({
-                "status": "ERROR",
-                "message": error or "No completed candles returned."
+                "status": "STALE" if "stale" in message.lower() else "ERROR",
+                "message": message
             })
             return result
 
