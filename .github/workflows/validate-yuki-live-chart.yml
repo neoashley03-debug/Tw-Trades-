@@ -1,0 +1,32 @@
+name: Validate Yuki live chart
+
+on:
+  pull_request:
+    branches: [fix/data-pipeline-and-ui]
+  push:
+    branches: [live-data-yuki-orderflow-v2]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Compile Flask backend
+        run: python -m py_compile app.py
+      - name: Extract and check Yuki browser script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path("app.py").read_text(encoding="utf-8")
+          marker = '<script>\n(function(){\n const symbolEl=document.getElementById("yuki-symbol");'
+          start = source.index(marker) + len("<script>\n")
+          end = source.index("</script>", start)
+          Path("/tmp/yuki-live-chart.js").write_text(source[start:end], encoding="utf-8")
+          PY
+          node --check /tmp/yuki-live-chart.js
