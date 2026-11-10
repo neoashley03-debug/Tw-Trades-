@@ -78,6 +78,10 @@ def _security_headers(response):
         "connect-src 'self' https:; "
         "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
     )
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     if request.is_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -732,46 +736,64 @@ def biquote_candles(symbol, interval, size=100):
         bars = payload.get("bars", [])
         if not isinstance(bars, list) or not bars:
             return None, "BiQuote returned no candles for " + provider_symbol, None
-        # API is newest-first. Drop the forming candle and retain the newest closed bars.
-        closed = [bar for bar in bars if not bar.get("isOpen", False)]
-        selected = list(reversed(closed[:int(size)]))
-        values = [{
-            "time": bar.get("openTime", ""),
-            "open": float(bar["open"]),
-            "high": float(bar["high"]),
-            "low": float(bar["low"]),
-            "close": float(bar["close"])
-        } for bar in selected]
+        # BiQuote has returned bars in different orderings. Sort by parsed UTC
+        # open time; never assume newest-first and accidentally select old data.
+        def parse_provider_time(raw):
+            if isinstance(raw, (int, float)):
+                number = float(raw)
+                return datetime.fromtimestamp(number / (1000 if number > 100000000000 else 1), timezone.utc)
+            value = str(raw or "").strip()
+            try:
+                number = float(value)
+                return datetime.fromtimestamp(number / (1000 if number > 100000000000 else 1), timezone.utc)
+            except ValueError:
+                stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp.astimezone(timezone.utc)
+
+        closed = [bar for bar in bars if str(bar.get("isOpen", False)).strip().lower() not in {"true", "1", "yes"}]
+        normalised = []
+        for bar in closed:
+            try:
+                stamp = parse_provider_time(bar.get("openTime"))
+                item = {
+                    "time": stamp.isoformat(),
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "close": float(bar["close"])
+                }
+                raw_volume = bar.get("volume")
+                if raw_volume is not None and float(raw_volume) >= 0:
+                    item["volume"] = float(raw_volume)
+                raw_tick_volume = bar.get("tickVolume", bar.get("tick_volume"))
+                if raw_tick_volume is not None and float(raw_tick_volume) >= 0:
+                    item["tick_volume"] = float(raw_tick_volume)
+                normalised.append(item)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+        normalised.sort(key=lambda item: item["time"])
+        deduped = {item["time"]: item for item in normalised}
+        values = list(deduped.values())[-int(size):]
         if not _valid_ohlc(values):
             return None, "BiQuote returned malformed or insufficient completed candles for " + provider_symbol, None
 
-        # Fail closed on stale data while the relevant market is expected open.
-        # Crypto and synthetic indices are treated as 24/7; FX/metals/index
-        # freshness checks are suspended during the approximate weekly closure.
         latest_time = values[-1].get("time")
         try:
-            stamp = datetime.fromisoformat(str(latest_time).replace("Z", "+00:00"))
-            if stamp.tzinfo is None:
-                stamp = stamp.replace(tzinfo=timezone.utc)
-            age_seconds = (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds()
-            age_seconds = max(0, age_seconds)
-        except (TypeError, ValueError):
+            stamp = parse_provider_time(latest_time)
+            age_seconds = max(0, (datetime.now(timezone.utc) - stamp).total_seconds())
+        except (TypeError, ValueError, OverflowError):
             return None, "Latest BiQuote candle has an invalid timestamp for " + provider_symbol, None
 
-        group = next((item.get("group") for item in ASSETS.values()
-                      if item.get("td") == symbol), "FOREX")
-        market_expected_open = (
-            group in ("CRYPTO", "SYNTHETICS")
-            or not fx_market_closed()
-        )
+        group = group_for_provider_symbol(symbol)
+        market_is_open = market_expected_open(group, symbol)
         interval_seconds = {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}.get(interval, 300)
-        freshness_limit = max(1200, interval_seconds * 2 + 300)
-        if market_expected_open and age_seconds > freshness_limit:
+        freshness_limit = _freshness_limit(interval, interval_seconds)
+        if market_is_open and age_seconds > freshness_limit:
             return None, (
-                "Stale market data rejected for " + provider_symbol +
+                "Stale BiQuote data rejected for " + provider_symbol +
                 ": latest completed candle is " + str(round(age_seconds / 60)) +
                 " minutes old; limit is " + str(round(freshness_limit / 60)) + " minutes."
-            )
+            ), None
         return values, None, "BiQuote public OHLC feed"
     except Exception as exc:
         return None, "BiQuote market feed failed: " + str(exc), None
@@ -887,7 +909,7 @@ def deriv_candles(symbol, interval, size=100):
 
         age_seconds = max(0, (datetime.now(timezone.utc) -
                               datetime.fromisoformat(values[-1]["time"])).total_seconds())
-        freshness_limit = max(1200, granularity * 2 + 300)
+        freshness_limit = _freshness_limit(interval, granularity)
         if age_seconds > freshness_limit:
             return None, (
                 "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
@@ -902,11 +924,11 @@ def deriv_candles(symbol, interval, size=100):
                 ws.close()
             except Exception:
                 pass
-def market_source_label(group=None):
+def market_source_label(group=None, symbol=None):
     """Accurate human-readable label for the feed that actually serves a group."""
     if group == "SYNTHETICS":
         return "Deriv public WebSocket"
-    if group == "INDICES":
+    if group == "INDICES" or symbol in {"ADA/USD", "DOGE/USD"}:
         return "Yahoo Finance chart API"
     return "BiQuote public OHLC feed"
 
@@ -956,7 +978,7 @@ def market_expected_open(group, symbol=None):
 
 
 def _freshness_limit(interval, granularity):
-    return max(1200, granularity * 2 + 300)
+    return max(120, granularity * 2)
 
 
 def _candle_age_seconds(values):
@@ -1045,6 +1067,7 @@ def yahoo_candles(symbol, interval, size=100):
             return None, "Yahoo Finance returned no series for " + ticker + ": " + str(error.get("description", "empty result")), None
         stamps = result.get("timestamp") or []
         quote = (result.get("indicators", {}).get("quote") or [{}])[0]
+        volumes = quote.get("volume") or []
         opens, highs, lows, closes = (quote.get("open") or [], quote.get("high") or [],
                                       quote.get("low") or [], quote.get("close") or [])
     except (AttributeError, IndexError, TypeError):
@@ -1063,6 +1086,8 @@ def yahoo_candles(symbol, interval, size=100):
             "time": datetime.fromtimestamp(int(stamp), timezone.utc).isoformat(),
             "open": float(o), "high": float(h), "low": float(l), "close": float(c),
         })
+        if index < len(volumes) and volumes[index] is not None:
+            raw[-1]["volume"] = float(volumes[index])
 
     if not raw:
         return None, "Yahoo Finance returned no usable candles for " + ticker, None
@@ -1077,11 +1102,15 @@ def yahoo_candles(symbol, interval, size=100):
             if current is None:
                 buckets[label] = {"time": label, "open": bar["open"], "high": bar["high"],
                                   "low": bar["low"], "close": bar["close"], "_last": bar["epoch"]}
+                if "volume" in bar:
+                    buckets[label]["volume"] = bar["volume"]
             else:
                 current["high"] = max(current["high"], bar["high"])
                 current["low"] = min(current["low"], bar["low"])
                 current["close"] = bar["close"]
                 current["_last"] = bar["epoch"]
+                if "volume" in bar:
+                    current["volume"] = current.get("volume", 0) + bar["volume"]
         ordered = [buckets[k] for k in sorted(buckets)]
         now_epoch = datetime.now(timezone.utc).timestamp()
         # A bucket is complete once the wall clock has passed its own end time.
@@ -1095,7 +1124,7 @@ def yahoo_candles(symbol, interval, size=100):
         values = [{k: v for k, v in b.items() if k != "_last"} for b in completed]
     else:
         values = [{"time": b["time"], "open": b["open"], "high": b["high"],
-                   "low": b["low"], "close": b["close"]} for b in raw]
+                   "low": b["low"], "close": b["close"], **({"volume": b["volume"]} if "volume" in b else {})} for b in raw]
         # Drop the still-forming candle using the newest bar's own timestamp.
         now_epoch = datetime.now(timezone.utc).timestamp()
         values = [v for v in values
@@ -1119,33 +1148,20 @@ def yahoo_candles(symbol, interval, size=100):
 
 
 def td(symbol, interval, size=100):
-    """Route each instrument to a provider verified to serve it.
+    """Use one declared provider per instrument. Never silently switch feeds.
 
-    Returns (candles, error, provider).
-
-    Verified coverage:
-      * Indices: BiQuote returns HTTP 200 with an empty bar list for every
-        index, so indices are served by Yahoo Finance.
-      * Crypto/FX/metals: BiQuote first; Yahoo Finance when BiQuote is empty or
-        stale (ADA/USD and DOGE/USD are years out of date on BiQuote).
-      * Synthetics: Deriv only, and only with a configured App ID.
+    Indices use Yahoo Finance because BiQuote returned empty index bars in
+    provider checks. ADA/DOGE use Yahoo as their declared source because
+    BiQuote's historical candles were stale. Other FX, metals and crypto use
+    BiQuote. Deriv synthetics use Deriv only.
     """
     group = group_for_provider_symbol(symbol)
-
     if group == "SYNTHETICS":
         return deriv_candles(symbol, interval, size)
-
-    primary = biquote_candles(symbol, interval, size)
-    if primary[0]:
-        return primary
-
-    if group == "INDICES":
+    if group == "INDICES" or symbol in {"ADA/USD", "DOGE/USD"}:
         return yahoo_candles(symbol, interval, size)
+    return biquote_candles(symbol, interval, size)
 
-    fallback = yahoo_candles(symbol, interval, size)
-    if fallback[0]:
-        return fallback
-    return None, primary[1] + " | Yahoo Finance fallback: " + str(fallback[1]), None
 
 # ============================================================
 # MARKET NEWS — GDELT DOC API primary, verified publisher RSS fallback
@@ -2061,25 +2077,39 @@ def ai_analysis(payload):
 
     model=get_setting("openai_model") or "gpt-5.6"
 
-    prompt=f"""
+    question = str(payload.get("question", "")).strip()[:1200]
+    if question:
+        prompt=f"""
+You are Yuki, the TW Trades market-education assistant.
+
+Answer the user's actual question using only the supplied market context.
+Do not invent prices, candles, volume, bid/ask aggressor delta, order-book depth,
+news, economic releases, technical levels or facts absent from the payload.
+If true order flow, bid/ask delta, footprint or depth-of-market data is not
+provided, state that it is unavailable. Do not relabel candle direction or
+ordinary tick volume as true order flow.
+Clearly distinguish measured values from interpretation and education.
+Explain ICC (Indication, Correction, Continuation) using body-based breaks.
+Never guarantee profit or accuracy.
+
+USER QUESTION:
+{question}
+
+REAL MARKET CONTEXT:
+{payload.get("market_context")}
+
+SYMBOL: {payload.get('symbol')}
+TIMEFRAME: {payload.get('interval')}
+"""
+    else:
+        prompt=f"""
 You are the TW Trades Intelligence Analyst.
 
-Analyze the following REAL market-analysis payload.
-
-Do not invent prices, news, economic releases, technical levels,
-or facts that are not contained in the payload.
-
-Explain:
-1. Technical structure
-2. TW Blueprint ICC state
-3. Fundamental/news environment
-4. Session context
-5. Why the setup qualifies or does not qualify
-6. What would invalidate it
-7. Main risks
-8. Educational lesson for the trader
-
-Never guarantee profit or accuracy.
+Analyze the following real market-analysis payload. Do not invent prices,
+news, economic releases, technical levels or facts not contained in it.
+Explain technical structure, TW Blueprint ICC state, fundamental/news
+environment, session context, qualification, invalidation, risks and the
+educational lesson. Never guarantee profit or accuracy.
 
 PAYLOAD:
 {payload}
@@ -2223,11 +2253,12 @@ def market_data_status():
     def check_one(label, provider_symbol):
         candles, error, provider = td(provider_symbol, "5min", 50)
         if error or not candles:
+            message = error or "No completed candles returned."
             return {
                 "symbol": label,
-                "status": "ERROR",
-                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
-                "message": error or "No completed candles returned."
+                "status": "STALE" if "stale" in message.lower() else "ERROR",
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol), provider_symbol),
+                "message": message
             }
         latest = candles[-1]
         raw_time = latest.get("time")
@@ -2240,20 +2271,20 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol), provider_symbol),
                 "message": "Latest candle has no valid UTC timestamp."
             }
 
         return {
             "symbol": label,
-            "status": "OK" if age_seconds <= 1200 else "STALE",
+            "status": "OK" if age_seconds <= _freshness_limit("5min", 300) else "STALE",
             "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
             "timeframe": "5min",
             "completed_candles": len(candles),
             "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
             "candle_age_minutes": round(age_seconds / 60, 1),
             "latest_close": latest["close"],
-            "message": "Recent completed candles received." if age_seconds <= 1200 else "Latest completed candle is older than 20 minutes."
+            "message": "Recent completed candles received." if age_seconds <= _freshness_limit("5min", 300) else "Latest completed candle is outside the 5-minute freshness limit."
         }
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -2289,10 +2320,10 @@ def market_data_status():
     return jsonify({
         "overall_status": overall,
         "market_closed": market_closed,
-        "source": "Mixed feeds: BiQuote and Deriv public WebSocket",
+        "source": "Declared feeds: BiQuote, Yahoo Finance and Deriv",
         "checked_at_utc": checked_at.isoformat(),
         "checks": results,
-        "note": "Read-only diagnostics; FX/gold candles may be old during the weekly closure, but crypto and Deriv synthetic markets are checked independently."
+        "note": "Read-only diagnostics. Closed markets are labelled closed; stale open-market candles are rejected, never substituted."
     })
 
 
@@ -2319,7 +2350,7 @@ def market_data_universe_status():
 
     def check_one(label, item):
         candles, error, provider = td(item["provider"], "5min", 50)
-        source = "Deriv public WebSocket" if item["group"] == "SYNTHETICS" else "BiQuote public OHLC"
+        source = market_source_label(item["group"], item["provider"])
         result = {
             "symbol": label,
             "group": item["group"],
@@ -2327,9 +2358,10 @@ def market_data_universe_status():
             "timeframe": "5min"
         }
         if error or not candles:
+            message = error or "No completed candles returned."
             result.update({
-                "status": "ERROR",
-                "message": error or "No completed candles returned."
+                "status": "STALE" if "stale" in message.lower() else "ERROR",
+                "message": message
             })
             return result
 
@@ -2344,13 +2376,13 @@ def market_data_universe_status():
             result.update({"status": "ERROR", "message": "Latest candle has an invalid timestamp."})
             return result
 
-        market_expected_open = item["group"] in ("CRYPTO", "SYNTHETICS") or not fx_market_closed()
-        if not market_expected_open:
+        market_is_open = market_expected_open(item["group"], item["provider"])
+        if not market_is_open:
             status = "MARKET_CLOSED"
             message = "Weekly closure expected for this market group; recheck during its next open session."
-        elif age_seconds > 1200:
+        elif age_seconds > _freshness_limit("5min", 300):
             status = "STALE"
-            message = "Latest completed candle is older than 20 minutes."
+            message = "Latest completed candle is outside the 5-minute freshness limit."
         else:
             status = "OK"
             message = "Recent completed candles received."
@@ -2435,9 +2467,6 @@ def api_blueprint():
     })
 
 
-_SCAN_CACHE = {"started": 0.0, "payload": None}
-_SCAN_CACHE_LOCK = threading.Lock()
-SCAN_CACHE_TTL = 90        # seconds a completed scan is reused
 SCAN_BUDGET = 75           # hard wall-clock budget for one scan, in seconds
 SCAN_WORKERS = 5           # concurrent instruments; each also fetches 4 timeframes
 
@@ -2474,7 +2503,7 @@ def _scan_payload(results_by_symbol, timed_out):
 
 @app.route("/api/scan")
 def api_scan():
-    """Scan the universe. Parallel, deadline-bounded and cached.
+    """Scan the universe with fresh provider requests, parallel and deadline-bounded.
 
     The previous sequential loop needed minutes for 31 instruments and always
     exceeded the worker timeout, so the endpoint returned nothing at all.
@@ -2494,16 +2523,6 @@ def api_scan():
         except Exception:
             app.logger.exception("Signal persistence failed for %s", symbol)
         return jsonify(result)
-
-    refresh = (request.args.get("refresh") or "").lower() in ("1", "true", "yes")
-    now = time.monotonic()
-    with _SCAN_CACHE_LOCK:
-        if not refresh and _SCAN_CACHE["payload"] is not None:
-            if now - _SCAN_CACHE["started"] < SCAN_CACHE_TTL:
-                cached = dict(_SCAN_CACHE["payload"])
-                cached["cached"] = True
-                cached["cache_age_seconds"] = round(now - _SCAN_CACHE["started"], 1)
-                return jsonify(cached)
 
     from concurrent.futures import ThreadPoolExecutor, wait
 
@@ -2542,10 +2561,6 @@ def api_scan():
         except Exception:
             app.logger.exception("Signal persistence failed for %s", item.get("symbol"))
 
-    with _SCAN_CACHE_LOCK:
-        _SCAN_CACHE["payload"] = dict(payload)
-        _SCAN_CACHE["started"] = time.monotonic()
-
     return jsonify(payload)
 
 
@@ -2564,6 +2579,126 @@ def api_news():
     )
 
     return jsonify(news(symbol))
+
+def build_yuki_market_payload(symbol, interval):
+    candles, error, provider = td(ASSETS[symbol]["td"], interval, 180)
+    if error or not candles:
+        return None, error or "Selected market provider returned no candles."
+
+    closes = [float(bar["close"]) for bar in candles]
+    def ema_values(period):
+        k = 2.0 / (period + 1)
+        current = None
+        output = []
+        for bar in candles:
+            current = bar["close"] if current is None else bar["close"] * k + current * (1-k)
+            output.append({"time": bar["time"], "value": current})
+        return output
+    def rsi_value(period=14):
+        if len(closes) <= period:
+            return None
+        changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gains = [max(change, 0) for change in changes]
+        losses = [max(-change, 0) for change in changes]
+        avg_gain = sum(gains[:period]) / period
+        avg_loss = sum(losses[:period]) / period
+        for i in range(period, len(gains)):
+            avg_gain = (avg_gain * (period-1) + gains[i]) / period
+            avg_loss = (avg_loss * (period-1) + losses[i]) / period
+        if avg_loss == 0:
+            return 100.0 if avg_gain else 50.0
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+    tr_values = []
+    for i, bar in enumerate(candles):
+        previous = closes[i-1] if i else bar["close"]
+        tr_values.append(max(bar["high"]-bar["low"], abs(bar["high"]-previous), abs(bar["low"]-previous)))
+    atr14 = sum(tr_values[-14:]) / 14 if len(tr_values) >= 14 else None
+    volumes = [bar.get("volume") for bar in candles]
+    has_volume = all(v is not None for v in volumes)
+    vwap = None
+    obv = None
+    if has_volume:
+        total_volume = sum(volumes)
+        if total_volume > 0:
+            vwap = sum(((bar["high"]+bar["low"]+bar["close"])/3)*bar["volume"] for bar in candles) / total_volume
+        obv_value = 0.0
+        for i in range(1, len(candles)):
+            if closes[i] > closes[i-1]:
+                obv_value += volumes[i]
+            elif closes[i] < closes[i-1]:
+                obv_value -= volumes[i]
+        obv = obv_value
+    latest = candles[-1]
+    stamp = datetime.fromisoformat(str(latest["time"]).replace("Z", "+00:00"))
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    stamp = stamp.astimezone(timezone.utc)
+    age_minutes = round(max(0, (datetime.now(timezone.utc)-stamp).total_seconds())/60, 1)
+    group = ASSETS[symbol]["group"]
+    market_status = "OPEN" if market_expected_open(group, ASSETS[symbol]["td"]) else "MARKET_CLOSED"
+    return {
+        "symbol": symbol, "interval": interval, "provider": provider,
+        "market_status": market_status,
+        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "latest_candle_utc": stamp.isoformat(),
+        "candle_age_minutes": age_minutes,
+        "candles": candles,
+        "indicators": {
+            "last_close": closes[-1],
+            "ema20": ema_values(20)[-1]["value"],
+            "ema50": ema_values(50)[-1]["value"],
+            "ema20_series": ema_values(20),
+            "ema50_series": ema_values(50),
+            "rsi14": rsi_value(),
+            "atr14": atr14,
+            "vwap": vwap,
+            "vwap_basis": "Loaded chart window; calculated only from provider-supplied trade volume.",
+            "obv": obv,
+            "volume_available": has_volume
+        },
+        "order_flow": {
+            "status": "UNAVAILABLE",
+            "message": "The selected provider does not supply verified bid/ask aggressor-side trades, footprint data or depth-of-market. OHLC candles and ordinary volume cannot establish true order flow."
+        }
+    }
+
+
+@app.route("/api/yuki/market")
+def api_yuki_market():
+    symbol = request.args.get("symbol", "XAU/USD").strip()
+    interval = request.args.get("interval", "5min").strip()
+    if symbol not in ASSETS:
+        return jsonify({"error": "Unsupported market symbol."}), 400
+    if interval not in {"5min", "15min", "1h", "4h"}:
+        return jsonify({"error": "Unsupported timeframe."}), 400
+    result, error = build_yuki_market_payload(symbol, interval)
+    if error:
+        return jsonify({"error": error}), 503
+    return jsonify(result)
+
+
+@app.route("/api/yuki/chat", methods=["POST"])
+def api_yuki_chat():
+    payload = request.get_json(force=True, silent=True) or {}
+    question = str(payload.get("question", "")).strip()
+    symbol = str(payload.get("symbol", "")).strip()
+    interval = str(payload.get("interval", "")).strip()
+    if not question or len(question) > 1200:
+        return jsonify({"available": False, "text": "Enter a question of up to 1,200 characters."}), 400
+    if symbol not in ASSETS or interval not in {"5min", "15min", "1h", "4h"}:
+        return jsonify({"available": False, "text": "Select a supported symbol and timeframe."}), 400
+    client_context = payload.get("market_context")
+    if not isinstance(client_context, dict) or client_context.get("symbol") != symbol or client_context.get("interval") != interval:
+        return jsonify({"available": False, "text": "Load the selected live chart before asking Yuki about its market data."}), 409
+    # Re-fetch from the selected provider on the server; never trust browser prices.
+    context, market_error = build_yuki_market_payload(symbol, interval)
+    if market_error:
+        return jsonify({"available": False, "text": "Live chart data unavailable: " + market_error}), 503
+    if client_context.get("latest_candle_utc") != context.get("latest_candle_utc"):
+        return jsonify({"available": False, "text": "The latest candle changed. Refresh the chart and ask again so the answer matches the displayed chart."}), 409
+    return jsonify(ai_analysis({"question": question, "symbol": symbol, "interval": interval, "market_context": context}))
+
 
 @app.route("/api/ai",methods=["POST"])
 def api_ai():
@@ -4329,45 +4464,113 @@ levels and invalidation framework.
 <!-- YUKI -->
 
 <section id="yuki">
-
 <div class="section-head">
-<div class="kicker">YUKI</div>
-<h2>Your intelligent workspace.</h2>
-<p class="muted">
-Yuki can sit alongside the TW Blueprint and Titan X
-systems as the conversational intelligence layer.
-</p>
+<div class="kicker">YUKI • LIVE MARKET WORKSPACE</div>
+<h2>Yuki Market Intelligence</h2>
+<p class="muted">Chart candles, calculated indicators and Yuki's market context come from the same selected TW Trades provider. Prices are never silently switched to another feed or served from browser cache.</p>
 </div>
-
-<div class="cards">
-
+<div class="card big-card" style="margin-bottom:18px;">
+  <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+    <div><strong>TradingView Lightweight Chart</strong><div id="yuki-data-status" class="muted">Waiting for the selected market feed…</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <select id="yuki-symbol" aria-label="Yuki market symbol">
+        <option>XAU/USD</option><option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option><option>GBP/JPY</option><option>EUR/JPY</option><option>EUR/AUD</option><option>GBP/AUD</option><option>USD/CHF</option><option>AUD/USD</option><option>USD/CAD</option><option>NASDAQ</option><option>US30</option><option>S&amp;P 500</option><option>DAX40</option><option>FTSE100</option><option>VIX</option><option>BTC/USD</option><option>ETH/USD</option><option>SOL/USD</option><option>XRP/USD</option><option>ADA/USD</option><option>DOGE/USD</option><option>Volatility 10 Index</option><option>Volatility 25 Index</option><option>Volatility 50 Index</option><option>Volatility 75 Index</option><option>Volatility 100 Index</option><option>Boom 500 Index</option><option>Crash 500 Index</option><option>Step Index</option>
+      </select>
+      <select id="yuki-timeframe" aria-label="Chart timeframe">
+        <option value="5min">5 minutes</option><option value="15min">15 minutes</option><option value="1h">1 hour</option><option value="4h">4 hours</option>
+      </select>
+      <button id="yuki-refresh" type="button">REFRESH DATA</button>
+    </div>
+  </div>
+  <div id="yuki-chart" style="height:460px;min-height:320px;margin-top:16px;"></div>
+  <div style="font-size:11px;color:#8794a8;margin-top:8px;">TradingView Lightweight Charts renderer. Candle data is the same server feed used by TW Trades analysis, not TradingView's separate embedded quote feed. Provider, market status and candle timestamp are displayed above.</div>
+  <div id="yuki-indicators" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-top:16px;"></div>
+  <div id="yuki-orderflow" style="margin-top:12px;padding:14px;border:1px solid rgba(255,190,80,.25);border-radius:12px;color:#f2d39b;">True order-flow data status: checking provider capabilities…</div>
+</div>
 <div class="card big-card">
-<h3>Market Assistant</h3>
-<p class="muted">
-Ask questions about structure, sessions,
-fundamentals and trading education.
-</p>
+  <h3>Ask Yuki about this chart</h3>
+  <p class="muted">Yuki verifies the selected chart's latest candle against the server feed before answering. It will not invent order flow, volume or prices.</p>
+  <div id="yuki-chat-log" aria-live="polite" style="min-height:120px;max-height:360px;overflow:auto;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;margin:12px 0;">Yuki is ready. Load a live market chart before asking chart-specific questions.</div>
+  <form id="yuki-chat-form" style="display:flex;gap:10px;flex-wrap:wrap;">
+    <input id="yuki-question" type="text" maxlength="1200" required placeholder="Ask about ICC, structure, RSI, VWAP, volume or risk…" style="flex:1;min-width:220px;">
+    <button type="submit">ASK YUKI</button>
+  </form>
+  <div id="yuki-chat-status" class="muted" style="margin-top:8px;">AI responses require an OpenAI API key configured in Admin.</div>
 </div>
-
-<div class="card big-card">
-<h3>TW Blueprint Companion</h3>
-<p class="muted">
-Use the ICC framework as the educational foundation
-for interpreting setups.
-</p>
-</div>
-
-<div class="card big-card">
-<h3>Research Workspace</h3>
-<p class="muted">
-Connect the Yuki API/webhook endpoint through
-the administrator configuration when available.
-</p>
-</div>
-
-</div>
-
 </section>
+<script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function(){
+ const symbolEl=document.getElementById("yuki-symbol");
+ const intervalEl=document.getElementById("yuki-timeframe");
+ const chartEl=document.getElementById("yuki-chart");
+ if(!symbolEl||!intervalEl||!chartEl)return;
+ let chart=null,candleSeries=null,ema20Series=null,ema50Series=null,volumeSeries=null,lastContext=null;
+ const fmt=(v)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toFixed(4):"Unavailable";
+ function setStatus(t){document.getElementById("yuki-data-status").textContent=t;}
+ function initChart(){
+   if(!window.LightweightCharts){setStatus("Chart library failed to load; market chart unavailable.");return;}
+   chart=LightweightCharts.createChart(chartEl,{width:chartEl.clientWidth,height:460,layout:{background:{color:"#080d14"},textColor:"#c7d0dc"},grid:{vertLines:{color:"#17212d"},horzLines:{color:"#17212d"}},rightPriceScale:{borderColor:"#344255"},timeScale:{borderColor:"#344255",timeVisible:true,secondsVisible:false},crosshair:{mode:0}});
+   candleSeries=chart.addCandlestickSeries({upColor:"#00c896",downColor:"#ef5350",borderVisible:false,wickUpColor:"#00c896",wickDownColor:"#ef5350"});
+   ema20Series=chart.addLineSeries({color:"#f5c451",lineWidth:2,priceLineVisible:false});
+   ema50Series=chart.addLineSeries({color:"#7c9cff",lineWidth:2,priceLineVisible:false});
+   volumeSeries=chart.addHistogramSeries({priceFormat:{type:"volume"},priceScaleId:"volume"});
+   chart.priceScale("volume").applyOptions({scaleMargins:{top:0.82,bottom:0}});
+   if(window.ResizeObserver){new ResizeObserver(()=>chart.applyOptions({width:chartEl.clientWidth})).observe(chartEl);}
+ }
+ function renderIndicators(m){
+   const box=document.getElementById("yuki-indicators");
+   const items=[["LAST CLOSE",fmt(m.last_close)],["EMA 20",fmt(m.ema20)],["EMA 50",fmt(m.ema50)],["RSI 14",fmt(m.rsi14)],["ATR 14",fmt(m.atr14)],["VWAP (window)",m.vwap===null?"Not supplied":fmt(m.vwap)],["OBV",m.obv===null?"Not supplied":fmt(m.obv)]];
+   box.innerHTML=items.map(x=>'<div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;"><small style="color:#8290a4;">'+x[0]+'</small><div style="font-weight:800;margin-top:5px;">'+x[1]+'</div></div>').join("");
+ }
+ async function load(){
+   if(!candleSeries){setStatus("TradingView chart library unavailable; no market values loaded.");return;}
+   setStatus("Requesting fresh "+symbolEl.value+" "+intervalEl.value+" candles…");
+   document.getElementById("yuki-orderflow").textContent="Checking whether the provider supplies genuine volume and aggressor-side trade data…";
+   try{
+     const response=await fetch("/api/yuki/market?symbol="+encodeURIComponent(symbolEl.value)+"&interval="+encodeURIComponent(intervalEl.value),{cache:"no-store"});
+     const data=await response.json();
+     if(!response.ok||data.error)throw new Error(data.error||("HTTP "+response.status));
+     if(!Array.isArray(data.candles)||!data.candles.length)throw new Error("Provider returned no chart candles.");
+     const bars=data.candles;
+     const toChartTime=(v)=>Math.floor(new Date(v).getTime()/1000);
+     candleSeries.setData(bars.map(b=>({time:toChartTime(b.time),open:b.open,high:b.high,low:b.low,close:b.close})));
+     const metrics=data.indicators;
+     ema20Series.setData(metrics.ema20_series.map(x=>({time:toChartTime(x.time),value:x.value})));
+     ema50Series.setData(metrics.ema50_series.map(x=>({time:toChartTime(x.time),value:x.value})));
+     volumeSeries.setData(bars.filter(b=>Number.isFinite(b.volume)).map(b=>({time:toChartTime(b.time),value:b.volume,color:b.close>=b.open?"rgba(0,200,150,.45)":"rgba(239,83,80,.45)"})));
+     chart.timeScale().fitContent();
+     renderIndicators(metrics);
+     lastContext=data;
+     setStatus((data.market_status==="MARKET_CLOSED"?"MARKET CLOSED • LAST AVAILABLE CLOSE":"SOURCE: "+data.provider)+" • "+data.latest_candle_utc+" • "+data.candle_age_minutes+" min old");
+     document.getElementById("yuki-orderflow").textContent="TRUE ORDER FLOW UNAVAILABLE: "+data.order_flow.message;
+   }catch(e){
+     lastContext=null;
+     candleSeries.setData([]);ema20Series.setData([]);ema50Series.setData([]);volumeSeries.setData([]);
+     document.getElementById("yuki-indicators").textContent="Indicators unavailable because the live feed failed.";
+     setStatus("DATA ERROR • "+e.message);
+     document.getElementById("yuki-orderflow").textContent="Order-flow unavailable because the selected provider returned no valid current chart data. No cached or estimated values are shown.";
+   }
+ }
+ function addMessage(who,msg){
+   const log=document.getElementById("yuki-chat-log"),p=document.createElement("p");
+   p.style.margin="8px 0";const b=document.createElement("strong");b.textContent=who+": ";p.appendChild(b);p.appendChild(document.createTextNode(msg));log.appendChild(p);log.scrollTop=log.scrollHeight;
+ }
+ document.getElementById("yuki-refresh").addEventListener("click",load);
+ symbolEl.addEventListener("change",load);intervalEl.addEventListener("change",load);
+ document.getElementById("yuki-chat-form").addEventListener("submit",async function(e){
+   e.preventDefault();const q=document.getElementById("yuki-question"),question=q.value.trim();if(!question)return;
+   addMessage("You",question);q.value="";
+   const status=document.getElementById("yuki-chat-status");status.textContent="Yuki is checking the latest server candle and analysing the chart…";
+   try{
+     const r=await fetch("/api/yuki/chat",{method:"POST",headers:{"Content-Type":"application/json"},cache:"no-store",body:JSON.stringify({question,symbol:symbolEl.value,interval:intervalEl.value,market_context:lastContext})});
+     const d=await r.json();if(!r.ok||!d.available)throw new Error(d.text||d.error||("HTTP "+r.status));
+     addMessage("Yuki",d.text);status.textContent="Response generated from server-verified chart data.";
+   }catch(err){addMessage("Yuki","Unavailable: "+err.message);status.textContent="No response generated; restore the live data source or configure the AI key.";}
+ });
+ initChart();load();window.setInterval(load,60000);
+})();
+</script>
 
 <!-- ACADEMY -->
 
@@ -5732,7 +5935,7 @@ twRunTerminal();
       <iframe
         src="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard"
         title="Apex Flow Analytics dashboard"
-        loading="lazy"
+        loading="eager"
         referrerpolicy="strict-origin-when-cross-origin"
         allow="clipboard-read; clipboard-write; fullscreen"
         allowfullscreen
