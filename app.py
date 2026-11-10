@@ -3793,7 +3793,7 @@ levels and invalidation framework.
  function ema(values,period){let out=[],k=2/(period+1),v=null;values.forEach((x,i)=>{v=v===null?x.close:x.close*k+v*(1-k);if(i>=period-1)out.push({time:x.time,value:v});});return out;}
  function renderIndicators(m){
    const box=document.getElementById("yuki-indicators");
-   const items=[["LAST CLOSE",fmt(m.last_close)],["EMA 20",fmt(m.ema20)],["EMA 50",fmt(m.ema50)],["RSI 14",fmt(m.rsi14)],["ATR 14",fmt(m.atr14)],["VWAP",m.vwap===null?"Not supplied":fmt(m.vwap)]];
+   const items=[["LAST CLOSE",fmt(m.last_close)],["EMA 20",fmt(m.ema20)],["EMA 50",fmt(m.ema50)],["RSI 14",fmt(m.rsi14)],["ATR 14",fmt(m.atr14)],["VWAP (window)",m.vwap===null?"Not supplied":fmt(m.vwap)]];
    box.innerHTML=items.map(x=>'<div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;"><small style="color:#8290a4;">'+x[0]+'</small><div style="font-weight:800;margin-top:5px;">'+x[1]+'</div></div>').join("");
  }
  async function load(){
@@ -3815,7 +3815,7 @@ levels and invalidation framework.
      chart.timeScale().fitContent();
      renderIndicators(metrics);
      lastContext=data;
-     setStatus("SOURCE: "+data.source+" • LAST CLOSED CANDLE: "+data.latest_candle_utc+" • "+data.candle_age_minutes+" min old");
+     setStatus((data.market_status==="MARKET_CLOSED"?"MARKET CLOSED • LAST AVAILABLE CLOSE":"SOURCE: "+data.source)+" • "+data.latest_candle_utc+" • "+data.candle_age_minutes+" min old");
      const flow=data.order_flow;
      document.getElementById("yuki-orderflow").textContent=flow.status==="AVAILABLE"
        ?"Volume context only: "+flow.message
