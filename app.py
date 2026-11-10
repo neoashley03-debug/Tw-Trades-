@@ -63,6 +63,10 @@ def add_public_api_cors(response):
         "/api/market-data/universe-status",
     }
     origin = request.headers.get("Origin", "")
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     if request.path in public_api_paths and origin in allowed_origins:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
@@ -454,7 +458,7 @@ def biquote_candles(symbol, interval, size=100):
             stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp.astimezone(timezone.utc)
 
-        closed = [bar for bar in bars if not bar.get("isOpen", False)]
+        closed = [bar for bar in bars if str(bar.get("isOpen", False)).strip().lower() not in {"true", "1", "yes"}]
         normalised = []
         for bar in closed:
             try:
@@ -619,7 +623,7 @@ def deriv_candles(symbol, interval, size=100):
 
         age_seconds = max(0, (datetime.now(timezone.utc) -
                               datetime.fromisoformat(values[-1]["time"])).total_seconds())
-        freshness_limit = max(1200, granularity * 2 + 300)
+        freshness_limit = max(120, granularity * 2)
         if age_seconds > freshness_limit:
             return None, (
                 "Stale Deriv data rejected for " + deriv_symbol + ": latest candle is " +
