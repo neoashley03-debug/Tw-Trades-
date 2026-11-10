@@ -643,106 +643,6 @@ def deriv_candles(symbol, interval, size=100):
                 ws.close()
             except Exception:
                 pass
-def yahoo_index_candles(symbol, interval, size=100):
-    """Fetch actual Yahoo Finance index candles; build 4h bars from hourly OHLC."""
-    import math
-    # Accept both display names and the short provider symbols used by ASSETS.
-    # Yahoo Finance ticker symbols are the source of real candles; no synthetic
-    # or fabricated OHLC bars are created when a provider is unavailable.
-    index_tickers = {
-        "NASDAQ": "^IXIC", "IXIC": "^IXIC",
-        "US30": "^DJI", "DJI": "^DJI",
-        "S&P 500": "^GSPC", "SPX": "^GSPC",
-        "DAX40": "^GDAXI", "DAX": "^GDAXI",
-        "FTSE100": "^FTSE", "FTSE": "^FTSE",
-        "VIX": "^VIX"
-    }
-    ticker = index_tickers.get(symbol)
-    if not ticker:
-        return None, "No Yahoo Finance index mapping for " + str(symbol)
-
-    source_interval = {"5min": "5m", "15min": "15m", "1h": "60m", "4h": "60m"}.get(interval)
-    if not source_interval:
-        return None, "Unsupported Yahoo Finance interval: " + str(interval)
-    period = "5d" if interval == "5min" else ("1mo" if interval == "15min" else "3mo")
-    try:
-        response = requests.get(
-            "https://query1.finance.yahoo.com/v8/finance/chart/" + ticker,
-            params={"range": period, "interval": source_interval, "includePrePost": "false"},
-            headers={"User-Agent": "Mozilla/5.0 TW-Trades/1.0"},
-            timeout=10
-        )
-        response.raise_for_status()
-        payload = response.json()
-        chart = payload.get("chart", {})
-        results = chart.get("result") or []
-        if not results:
-            error = (chart.get("error") or {}).get("description") or "Yahoo Finance returned no index data."
-            return None, "Yahoo Finance: " + str(error)
-        result = results[0]
-        timestamps = result.get("timestamp") or []
-        quote_rows = ((result.get("indicators") or {}).get("quote") or [{}])
-        quote = quote_rows[0]
-        bars = []
-        for idx, stamp in enumerate(timestamps):
-            try:
-                o, h, low, close = (quote[key][idx] for key in ("open", "high", "low", "close"))
-                if any(value is None for value in (o, h, low, close)):
-                    continue
-                bars.append({
-                    "epoch": int(stamp),
-                    "time": datetime.fromtimestamp(int(stamp), timezone.utc).isoformat(),
-                    "open": float(o), "high": float(h),
-                    "low": float(low), "close": float(close)
-                })
-            except (IndexError, TypeError, ValueError, OverflowError):
-                continue
-
-        if interval == "4h":
-            # Aggregate four genuinely consecutive hourly candles. Fixed UTC
-            # buckets incorrectly discarded index-market bars when exchanges
-            # close overnight and sessions do not fill every UTC hour.
-            ordered = sorted(bars, key=lambda item: item["epoch"])
-            aggregated = []
-            run = []
-            for bar in ordered:
-                if run and bar["epoch"] != run[-1]["epoch"] + 3600:
-                    run = []
-                run.append(bar)
-                if len(run) == 4:
-                    # Only use fully completed source candles.
-                    if run[-1]["epoch"] + 3600 <= int(datetime.now(timezone.utc).timestamp()):
-                        aggregated.append({
-                            # Use the final source candle's timestamp so the
-                            # freshness check measures the actual source data,
-                            # not the start of the four-hour group.
-                            "time": datetime.fromtimestamp(run[-1]["epoch"], timezone.utc).isoformat(),
-                            "open": run[0]["open"],
-                            "high": max(item["high"] for item in run),
-                            "low": min(item["low"] for item in run),
-                            "close": run[-1]["close"]
-                        })
-                    run = []
-            values = aggregated[-int(size):]
-        else:
-            # Discard the last potentially-forming candle.
-            bars = [bar for bar in bars if bar["epoch"] + {"5min": 300, "15min": 900, "1h": 3600}[interval]
-                    <= int(datetime.now(timezone.utc).timestamp())]
-            values = [{key: bar[key] for key in ("time", "open", "high", "low", "close")}
-                      for bar in bars[-int(size):]]
-
-        if not _valid_ohlc(values, minimum=min(30, int(size))):
-            return None, "Yahoo Finance returned insufficient or malformed completed candles for " + ticker + " (" + interval + ")"
-        stamp = datetime.fromisoformat(values[-1]["time"].replace("Z", "+00:00"))
-        age_seconds = max(0, (datetime.now(timezone.utc) - stamp.astimezone(timezone.utc)).total_seconds())
-        freshness_limit = max(1200, {"5min": 300, "15min": 900, "1h": 3600, "4h": 14400}[interval] * 2 + 300)
-        if not fx_market_closed() and age_seconds > freshness_limit:
-            return None, "Yahoo Finance data is stale for " + ticker + ": last candle is " + str(round(age_seconds / 60)) + " minutes old."
-        return values, None
-    except Exception as exc:
-        return None, "Yahoo Finance index feed failed for " + ticker + ": " + str(exc)
-
-
 def td(symbol, interval, size=100):
     """Route each asset to its declared source; never switch providers silently."""
     group = next((item.get("group") for item in ASSETS.values()
@@ -5205,20 +5105,12 @@ Instagram · @topwavetradesalltime
                 throw new Error(data.error);
             }
 
-            const value =
-                function(key,fallback){
-
-                    if(
-                        data[key] !== undefined &&
-                        data[key] !== null &&
-                        String(data[key]).trim() !== ""
-                    ){
-                        return String(data[key]);
-                    }
-
-                    return fallback;
-
-                };
+            const value = function(key){
+                if(data[key] !== undefined && data[key] !== null && String(data[key]).trim() !== ""){
+                    return String(data[key]);
+                }
+                return "UNAVAILABLE";
+            };
 
             const set =
                 function(id,text){
@@ -5234,68 +5126,47 @@ Instagram · @topwavetradesalltime
 
             set(
                 "twScanBias",
-                value(
-                    "bias",
-                    value("signal","NEUTRAL")
-                ).toUpperCase()
+                (data.direction ? String(data.direction) : String(data.status || "UNAVAILABLE")).toUpperCase()
             );
 
             set(
                 "twScanSupport",
-                value("support","—")
+                value("support")
             );
 
             set(
                 "twScanResistance",
-                value("resistance","—")
+                value("resistance")
             );
 
             set(
                 "twScanIndication",
-                value(
-                    "indication",
-                    "No indication returned."
-                )
+                value("indication")
             );
 
             set(
                 "twScanCorrection",
-                value(
-                    "correction",
-                    "No correction returned."
-                )
+                value("correction")
             );
 
             set(
                 "twScanContinuation",
-                value(
-                    "continuation",
-                    "No continuation returned."
-                )
+                value("continuation")
             );
 
             set(
                 "twScanTechnical",
-                value(
-                    "technical",
-                    "No technical detail returned."
-                )
+                value("technical")
             );
 
             set(
                 "twScanFundamental",
-                value(
-                    "fundamental",
-                    "No fundamental detail returned."
-                )
+                value("fundamental")
             );
 
             set(
                 "twScanSentiment",
-                value(
-                    "sentiment",
-                    "No sentiment detail returned."
-                )
+                value("sentiment")
             );
 
             set(
@@ -5561,7 +5432,7 @@ twRunTerminal();
       <iframe
         src="https://apex-flow-analytics-copy-c149c067.base44.app/Dashboard"
         title="Apex Flow Analytics dashboard"
-        loading="lazy"
+        loading="eager"
         referrerpolicy="strict-origin-when-cross-origin"
         allow="clipboard-read; clipboard-write; fullscreen"
         allowfullscreen
