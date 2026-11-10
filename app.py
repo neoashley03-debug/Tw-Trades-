@@ -2451,9 +2451,6 @@ def api_blueprint():
     })
 
 
-_SCAN_CACHE = {"started": 0.0, "payload": None}
-_SCAN_CACHE_LOCK = threading.Lock()
-SCAN_CACHE_TTL = 90        # seconds a completed scan is reused
 SCAN_BUDGET = 75           # hard wall-clock budget for one scan, in seconds
 SCAN_WORKERS = 5           # concurrent instruments; each also fetches 4 timeframes
 
@@ -2490,7 +2487,7 @@ def _scan_payload(results_by_symbol, timed_out):
 
 @app.route("/api/scan")
 def api_scan():
-    """Scan the universe. Parallel, deadline-bounded and cached.
+    """Scan the universe with fresh provider requests, parallel and deadline-bounded.
 
     The previous sequential loop needed minutes for 31 instruments and always
     exceeded the worker timeout, so the endpoint returned nothing at all.
@@ -2510,16 +2507,6 @@ def api_scan():
         except Exception:
             app.logger.exception("Signal persistence failed for %s", symbol)
         return jsonify(result)
-
-    refresh = (request.args.get("refresh") or "").lower() in ("1", "true", "yes")
-    now = time.monotonic()
-    with _SCAN_CACHE_LOCK:
-        if not refresh and _SCAN_CACHE["payload"] is not None:
-            if now - _SCAN_CACHE["started"] < SCAN_CACHE_TTL:
-                cached = dict(_SCAN_CACHE["payload"])
-                cached["cached"] = True
-                cached["cache_age_seconds"] = round(now - _SCAN_CACHE["started"], 1)
-                return jsonify(cached)
 
     from concurrent.futures import ThreadPoolExecutor, wait
 
@@ -2557,10 +2544,6 @@ def api_scan():
             persist_qualified_signal(item)
         except Exception:
             app.logger.exception("Signal persistence failed for %s", item.get("symbol"))
-
-    with _SCAN_CACHE_LOCK:
-        _SCAN_CACHE["payload"] = dict(payload)
-        _SCAN_CACHE["started"] = time.monotonic()
 
     return jsonify(payload)
 
