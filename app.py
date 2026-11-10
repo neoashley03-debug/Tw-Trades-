@@ -1804,21 +1804,12 @@ def api_blueprint():
     })
 
 
-@app.route("/api/yuki/market")
-def api_yuki_market():
-    symbol = request.args.get("symbol", "XAU/USD").strip()
-    interval = request.args.get("interval", "5min").strip()
-    if symbol not in ASSETS:
-        return jsonify({"error": "Unsupported market symbol."}), 400
-    if interval not in {"5min", "15min", "1h", "4h"}:
-        return jsonify({"error": "Unsupported timeframe."}), 400
+def build_yuki_market_payload(symbol, interval):
     candles, error = td(ASSETS[symbol]["td"], interval, 180)
     if error or not candles:
-        return jsonify({"error": error or "Live provider returned no candles."}), 503
+        return None, error or "Live provider returned no candles."
 
     closes = [float(bar["close"]) for bar in candles]
-    highs = [float(bar["high"]) for bar in candles]
-    lows = [float(bar["low"]) for bar in candles]
     def ema_values(period):
         k = 2.0 / (period + 1)
         current = None
@@ -1830,11 +1821,9 @@ def api_yuki_market():
     def rsi_value(period=14):
         if len(closes) <= period:
             return None
-        gains, losses = [], []
-        for i in range(1, len(closes)):
-            change = closes[i] - closes[i-1]
-            gains.append(max(change, 0))
-            losses.append(max(-change, 0))
+        changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gains = [max(change, 0) for change in changes]
+        losses = [max(-change, 0) for change in changes]
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
         for i in range(period, len(gains)):
@@ -1858,7 +1847,7 @@ def api_yuki_market():
     stamp = datetime.fromisoformat(latest["time"].replace("Z", "+00:00"))
     age_minutes = round(max(0, (datetime.now(timezone.utc)-stamp).total_seconds())/60, 1)
     source = "Deriv public WebSocket" if ASSETS[symbol]["group"] in {"CRYPTO", "SYNTHETICS"} else "BiQuote public OHLC"
-    return jsonify({
+    return {
         "symbol": symbol, "interval": interval, "source": source,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
@@ -1873,13 +1862,28 @@ def api_yuki_market():
             "rsi14": rsi_value(),
             "atr14": atr14,
             "vwap": vwap,
+            "vwap_basis": "Loaded chart window; only calculated when provider supplies volume.",
             "volume_available": has_volume
         },
         "order_flow": {
             "status": "UNAVAILABLE",
             "message": "The configured candle endpoint does not provide verified bid/ask aggressor-side trades, footprint data or depth-of-market. Candle direction and OHLC volume cannot establish true order flow."
         }
-    })
+    }
+
+
+@app.route("/api/yuki/market")
+def api_yuki_market():
+    symbol = request.args.get("symbol", "XAU/USD").strip()
+    interval = request.args.get("interval", "5min").strip()
+    if symbol not in ASSETS:
+        return jsonify({"error": "Unsupported market symbol."}), 400
+    if interval not in {"5min", "15min", "1h", "4h"}:
+        return jsonify({"error": "Unsupported timeframe."}), 400
+    result, error = build_yuki_market_payload(symbol, interval)
+    if error:
+        return jsonify({"error": error}), 503
+    return jsonify(result)
 
 
 @app.route("/api/yuki/chat", methods=["POST"])
@@ -1892,11 +1896,16 @@ def api_yuki_chat():
         return jsonify({"available": False, "text": "Enter a question of up to 1,200 characters."}), 400
     if symbol not in ASSETS or interval not in {"5min", "15min", "1h", "4h"}:
         return jsonify({"available": False, "text": "Select a supported symbol and timeframe."}), 400
-    context = payload.get("market_context")
-    if not isinstance(context, dict) or context.get("symbol") != symbol or context.get("interval") != interval:
+    client_context = payload.get("market_context")
+    if not isinstance(client_context, dict) or client_context.get("symbol") != symbol or client_context.get("interval") != interval:
         return jsonify({"available": False, "text": "Load the selected live chart before asking Yuki about its market data."}), 409
-    if context.get("error") or not isinstance(context.get("candles"), list) or not context["candles"]:
-        return jsonify({"available": False, "text": "Live chart data is unavailable; Yuki will not analyse stale or substituted prices."}), 503
+    # Never trust browser-supplied prices or indicator values. Re-fetch from the
+    # same declared provider and require the chart's latest candle to match.
+    context, market_error = build_yuki_market_payload(symbol, interval)
+    if market_error:
+        return jsonify({"available": False, "text": "Live chart data unavailable: " + market_error}), 503
+    if client_context.get("latest_candle_utc") != context.get("latest_candle_utc"):
+        return jsonify({"available": False, "text": "A new candle arrived or the chart is out of sync. Refresh the chart and ask again."}), 409
     result = ai_analysis({"question": question, "symbol": symbol, "interval": interval, "market_context": context})
     return jsonify(result)
 
