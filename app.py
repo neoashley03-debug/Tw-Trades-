@@ -1081,6 +1081,8 @@ def yahoo_candles(symbol, interval, size=100):
             "time": datetime.fromtimestamp(int(stamp), timezone.utc).isoformat(),
             "open": float(o), "high": float(h), "low": float(l), "close": float(c),
         })
+        if index < len(volumes) and volumes[index] is not None:
+            raw[-1]["volume"] = float(volumes[index])
 
     if not raw:
         return None, "Yahoo Finance returned no usable candles for " + ticker, None
@@ -1095,11 +1097,15 @@ def yahoo_candles(symbol, interval, size=100):
             if current is None:
                 buckets[label] = {"time": label, "open": bar["open"], "high": bar["high"],
                                   "low": bar["low"], "close": bar["close"], "_last": bar["epoch"]}
+                if "volume" in bar:
+                    buckets[label]["volume"] = bar["volume"]
             else:
                 current["high"] = max(current["high"], bar["high"])
                 current["low"] = min(current["low"], bar["low"])
                 current["close"] = bar["close"]
                 current["_last"] = bar["epoch"]
+                if "volume" in bar:
+                    current["volume"] = current.get("volume", 0) + bar["volume"]
         ordered = [buckets[k] for k in sorted(buckets)]
         now_epoch = datetime.now(timezone.utc).timestamp()
         # A bucket is complete once the wall clock has passed its own end time.
@@ -1113,7 +1119,7 @@ def yahoo_candles(symbol, interval, size=100):
         values = [{k: v for k, v in b.items() if k != "_last"} for b in completed]
     else:
         values = [{"time": b["time"], "open": b["open"], "high": b["high"],
-                   "low": b["low"], "close": b["close"]} for b in raw]
+                   "low": b["low"], "close": b["close"], **({"volume": b["volume"]} if "volume" in b else {})} for b in raw]
         # Drop the still-forming candle using the newest bar's own timestamp.
         now_epoch = datetime.now(timezone.utc).timestamp()
         values = [v for v in values
@@ -2066,28 +2072,28 @@ def ai_analysis(payload):
 
     model=get_setting("openai_model") or "gpt-5.6"
 
+    question = str(payload.get("question", "")).strip()[:1200]
     prompt=f"""
-You are the TW Trades Intelligence Analyst.
+You are Yuki, the TW Trades market-education assistant.
 
-Analyze the following REAL market-analysis payload.
-
-Do not invent prices, news, economic releases, technical levels,
-or facts that are not contained in the payload.
-
-Explain:
-1. Technical structure
-2. TW Blueprint ICC state
-3. Fundamental/news environment
-4. Session context
-5. Why the setup qualifies or does not qualify
-6. What would invalidate it
-7. Main risks
-8. Educational lesson for the trader
-
+Answer the user's actual question using only the supplied market context.
+Do not invent prices, candles, volume, bid/ask aggressor delta, order-book depth,
+news, economic releases, technical levels or facts absent from the payload.
+If true order flow, bid/ask delta, footprint or depth-of-market data is not
+provided, state that it is unavailable. Do not relabel candle direction or
+ordinary tick volume as true order flow.
+Clearly distinguish measured values from interpretation and education.
+Explain ICC (Indication, Correction, Continuation) using body-based breaks.
 Never guarantee profit or accuracy.
 
-PAYLOAD:
-{payload}
+USER QUESTION:
+{question or "Explain the selected market chart."}
+
+REAL MARKET CONTEXT:
+{payload.get("market_context")}
+
+SYMBOL: {payload.get("symbol")}
+TIMEFRAME: {payload.get("interval")}
 """
 
     try:
@@ -2231,7 +2237,7 @@ def market_data_status():
             return {
                 "symbol": label,
                 "status": "ERROR",
-                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
+                "source": provider or market_source_label(group_for_provider_symbol(provider_symbol), provider_symbol),
                 "message": error or "No completed candles returned."
             }
         latest = candles[-1]
@@ -2251,14 +2257,14 @@ def market_data_status():
 
         return {
             "symbol": label,
-            "status": "OK" if age_seconds <= 1200 else "STALE",
+            "status": "OK" if age_seconds <= _freshness_limit("5min", 300) else "STALE",
             "source": provider or market_source_label(group_for_provider_symbol(provider_symbol)),
             "timeframe": "5min",
             "completed_candles": len(candles),
             "latest_candle_utc": stamp.astimezone(timezone.utc).isoformat(),
             "candle_age_minutes": round(age_seconds / 60, 1),
             "latest_close": latest["close"],
-            "message": "Recent completed candles received." if age_seconds <= 1200 else "Latest completed candle is older than 20 minutes."
+            "message": "Recent completed candles received." if age_seconds <= _freshness_limit("5min", 300) else "Latest completed candle is outside the 5-minute freshness limit."
         }
 
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -2294,10 +2300,10 @@ def market_data_status():
     return jsonify({
         "overall_status": overall,
         "market_closed": market_closed,
-        "source": "Mixed feeds: BiQuote and Deriv public WebSocket",
+        "source": "Declared feeds: BiQuote, Yahoo Finance and Deriv",
         "checked_at_utc": checked_at.isoformat(),
         "checks": results,
-        "note": "Read-only diagnostics; FX/gold candles may be old during the weekly closure, but crypto and Deriv synthetic markets are checked independently."
+        "note": "Read-only diagnostics. Closed markets are labelled closed; stale open-market candles are rejected, never substituted."
     })
 
 
@@ -2324,7 +2330,7 @@ def market_data_universe_status():
 
     def check_one(label, item):
         candles, error, provider = td(item["provider"], "5min", 50)
-        source = "Deriv public WebSocket" if item["group"] == "SYNTHETICS" else "BiQuote public OHLC"
+        source = market_source_label(item["group"], item["provider"])
         result = {
             "symbol": label,
             "group": item["group"],
@@ -2349,13 +2355,13 @@ def market_data_universe_status():
             result.update({"status": "ERROR", "message": "Latest candle has an invalid timestamp."})
             return result
 
-        market_expected_open = item["group"] in ("CRYPTO", "SYNTHETICS") or not fx_market_closed()
-        if not market_expected_open:
+        market_is_open = market_expected_open(item["group"], item["provider"])
+        if not market_is_open:
             status = "MARKET_CLOSED"
             message = "Weekly closure expected for this market group; recheck during its next open session."
-        elif age_seconds > 1200:
+        elif age_seconds > _freshness_limit("5min", 300):
             status = "STALE"
-            message = "Latest completed candle is older than 20 minutes."
+            message = "Latest completed candle is outside the 5-minute freshness limit."
         else:
             status = "OK"
             message = "Recent completed candles received."
