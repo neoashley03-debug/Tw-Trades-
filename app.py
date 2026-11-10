@@ -2078,7 +2078,8 @@ def ai_analysis(payload):
     model=get_setting("openai_model") or "gpt-5.6"
 
     question = str(payload.get("question", "")).strip()[:1200]
-    prompt=f"""
+    if question:
+        prompt=f"""
 You are Yuki, the TW Trades market-education assistant.
 
 Answer the user's actual question using only the supplied market context.
@@ -2092,13 +2093,26 @@ Explain ICC (Indication, Correction, Continuation) using body-based breaks.
 Never guarantee profit or accuracy.
 
 USER QUESTION:
-{question or "Explain the selected market chart."}
+{question}
 
 REAL MARKET CONTEXT:
 {payload.get("market_context")}
 
-SYMBOL: {payload.get("symbol")}
-TIMEFRAME: {payload.get("interval")}
+SYMBOL: {payload.get('symbol')}
+TIMEFRAME: {payload.get('interval')}
+"""
+    else:
+        prompt=f"""
+You are the TW Trades Intelligence Analyst.
+
+Analyze the following real market-analysis payload. Do not invent prices,
+news, economic releases, technical levels or facts not contained in it.
+Explain technical structure, TW Blueprint ICC state, fundamental/news
+environment, session context, qualification, invalidation, risks and the
+educational lesson. Never guarantee profit or accuracy.
+
+PAYLOAD:
+{payload}
 """
 
     try:
